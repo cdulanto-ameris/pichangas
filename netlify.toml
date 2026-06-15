@@ -1,0 +1,12 @@
+# Configuración de build para Netlify.
+# Nitro (TanStack Start) tiene zero-config con Netlify: auto-detecta el entorno
+# y genera las functions + los estáticos en dist/. Aquí solo fijamos lo básico
+# para que no dependa de la auto-detección de la UI.
+
+[build]
+  command = "npm run build"
+  publish = "dist"
+
+[build.environment]
+  # Vite 7 requiere Node >= 20.19 o >= 22.12
+  NODE_VERSION = "22"
