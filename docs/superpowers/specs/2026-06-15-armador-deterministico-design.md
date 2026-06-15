@@ -31,6 +31,11 @@ La feature se usa en cada partido, offline, sin presupuesto de API.
    de sectores ubica a cada jugador donde mejor calza.
 4. **Mismo contrato que hoy** (misma entrada/salida de las server functions) → la UI no cambia
    y dejar enchufable la IA en el futuro es trivial.
+5. **El auto-armado reparte solo a los jugadores reales seleccionados** (los que tienen nivel).
+   Los **parches se agregan a mano** después, vía el flujo existente de la pantalla, para
+   completar cada lado hasta 8. Motivo: la app intencionalmente **no conoce el nivel de los
+   parches** (no se les califica), pero los admins sí lo conocen, así que su reparto se hace
+   con criterio humano, no automático. Los parches **no entran** en el balanceo del Paso 1.
 
 ## Contrato (no cambia la UI)
 
@@ -71,10 +76,15 @@ Lo calcula `sugerirEquipos` (lectura con `supabaseAdmin`, porque RLS oculta las 
 pasa a `armarEquipos`.
 
 ### Paso 1 — Repartir equipos (modo "auto" / `sugerirEquipos`)
-1. Sea `N` la cantidad de jugadores (2–16) y `k = floor(N/2)`. Enumerar todas las
-   combinaciones de `k` jugadores para el equipo blanco (el resto va a negro). Para fijar la
-   orientación y evitar duplicar particiones simétricas, el primer jugador de la lista queda
-   siempre en blanco. Con `N ≤ 16` son ≤ 12.870 combinaciones → milisegundos.
+Opera **solo sobre los jugadores reales seleccionados** (convocados con nivel). Los parches no
+participan: se agregan a mano después (ver §Decisiones #5).
+
+1. Sea `N` la cantidad de jugadores reales seleccionados (2–16) y `k = floor(N/2)`. Los dos
+   equipos quedan con `k` y `N−k` jugadores, es decir **igual cantidad o una diferencia de 1**.
+   Enumerar todas las combinaciones de `k` jugadores para el equipo blanco (el resto va a
+   negro). Para fijar la orientación y evitar duplicar particiones simétricas, el primer
+   jugador de la lista queda siempre en blanco. Con `N ≤ 16` son ≤ 12.870 combinaciones →
+   milisegundos.
 2. Para cada partición calcular:
    - **`balance` = `|sumaNivel(blanco) − sumaNivel(negro)|`** (clave primaria; menor es mejor).
    - **`preferencias` = `puntajeAsignacion(blanco) + puntajeAsignacion(negro)`** (desempate;
@@ -106,12 +116,15 @@ Para un equipo de hasta 8 jugadores, asignar cada uno a un **sector único** ent
 - Empates de igual peso se rompen de forma determinista (orden de jugadores y de `SECTORES`).
 
 ## Casos borde
-- **N impar o < 16:** equipos de tamaño `floor`/`ceil`; el equipo más chico deja un sector
-  vacío adicional. Correcto.
+- **N impar:** equipos de `floor`/`ceil` (diferencia de 1 jugador); el equipo más chico deja un
+  sector vacío adicional. Correcto.
 - **Sin calificaciones (todos 6.5):** `balance` es 0 o casi para muchas particiones → manda el
   desempate por preferencias.
-- **Equipo con < 8 (parches se agregan después en la UI):** `asignarSectores` funciona con
-  cualquier tamaño ≤ 9.
+- **Parches:** no entran al Paso 1. Se agregan a mano después en la UI (flujo existente
+  `asignarParche` → `siguienteSectorLibre`, sin cambios) para completar cada lado a 8; el admin
+  los reparte con su propio criterio de nivel.
+- **`asignarSectores` con jugadores sin preferencias** (p. ej. un parche en el modo manual, que
+  sí los incluye): funciona con cualquier tamaño ≤ 9; los de peso 0 caen en los sectores libres.
 - **Todos prefieren el mismo sector:** solo uno lo obtiene (matching); el resto cae en su
   siguiente mejor preferencia disponible — no en un sector arbitrario como hoy.
 
