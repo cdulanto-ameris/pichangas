@@ -1,7 +1,8 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
-import { SECTORES, type Sector } from "@/lib/sectores";
+import { SECTORES } from "@/lib/sectores";
+import { armarEquipos, asignarSectores, type Jugador } from "@/lib/armador";
 
 const sectorEnum = z.enum(SECTORES);
 
@@ -18,14 +19,15 @@ export const sugerirEquipos = createServerFn({ method: "POST" })
     const { supabase } = context;
     const { jugadores_ids } = data;
 
-    // 1. Cargar perfiles + nivel oculto (promedio de notas recibidas)
+    // 1. Cargar perfiles
     const { data: perfiles } = await supabase
       .from("profiles")
-      .select("id, sobrenombre, sector_1, sector_2, sector_3")
+      .select("id, sobrenombre, es_parche, sector_1, sector_2, sector_3")
       .in("id", jugadores_ids);
     if (!perfiles) throw new Error("No se pudieron cargar los perfiles");
 
-    // Nivel oculto: usar admin para leer agregados de calificaciones (RLS bloquea select normal)
+    // 2. Nivel oculto = promedio de calificaciones recibidas (6.5 por defecto).
+    //    Se lee con admin porque RLS bloquea el SELECT normal de calificaciones.
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
     const { data: notas } = await supabaseAdmin
       .from("calificaciones")
@@ -38,61 +40,28 @@ export const sugerirEquipos = createServerFn({ method: "POST" })
       const agrupado = new Map<string, { sum: number; n: number }>();
       for (const r of notas) {
         const cur = agrupado.get(r.calificado_id) ?? { sum: 0, n: 0 };
-        cur.sum += Number(r.nota); cur.n += 1;
+        cur.sum += Number(r.nota);
+        cur.n += 1;
         agrupado.set(r.calificado_id, cur);
       }
       for (const [id, v] of agrupado) nivelPorJugador.set(id, v.sum / v.n);
     }
 
-    // 2. Ordenar de mayor a menor nivel
-    const ordenados = [...perfiles].sort(
-      (a, b) => (nivelPorJugador.get(b.id) ?? 6.5) - (nivelPorJugador.get(a.id) ?? 6.5)
-    );
+    // 3. Construir jugadores (ordenados por id para reproducibilidad) y armar.
+    const jugadores: Jugador[] = perfiles
+      .map((p) => ({
+        id: p.id,
+        sobrenombre: p.sobrenombre,
+        nivel: nivelPorJugador.get(p.id) ?? 6.5,
+        es_parche: p.es_parche,
+        sector_1: p.sector_1,
+        sector_2: p.sector_2,
+        sector_3: p.sector_3,
+      }))
+      .sort((a, b) => a.id.localeCompare(b.id));
 
-    // 3. Snake draft → 2 equipos de 8
-    const blanco: typeof ordenados = [];
-    const negro: typeof ordenados = [];
-    ordenados.forEach((p, i) => {
-      const ronda = Math.floor(i / 2);
-      const tocaBlanco = ronda % 2 === 0 ? i % 2 === 0 : i % 2 === 1;
-      (tocaBlanco ? blanco : negro).push(p);
-    });
-
-    // 4. Asignar sectores: para cada equipo, intentar cubrir sectores 1°/2°/3° preferidos
-    function asignarSectores(equipo: typeof blanco) {
-      const ocupados = new Set<Sector>();
-      const asignaciones: { jugador_id: string; sobrenombre: string; sector: Sector }[] = [];
-      // Pasada 1: sector 1 preferido si está libre
-      const restantes = [...equipo];
-      for (const pref of [1, 2, 3] as const) {
-        for (let i = restantes.length - 1; i >= 0; i--) {
-          const p = restantes[i];
-          const s = (pref === 1 ? p.sector_1 : pref === 2 ? p.sector_2 : p.sector_3) as Sector | null;
-          if (s && !ocupados.has(s)) {
-            asignaciones.push({ jugador_id: p.id, sobrenombre: p.sobrenombre, sector: s });
-            ocupados.add(s);
-            restantes.splice(i, 1);
-          }
-        }
-      }
-      // Pasada final: rellenar con sectores libres en orden
-      for (const p of restantes) {
-        const libre = SECTORES.find((s) => !ocupados.has(s));
-        if (libre) {
-          asignaciones.push({ jugador_id: p.id, sobrenombre: p.sobrenombre, sector: libre });
-          ocupados.add(libre);
-        } else {
-          asignaciones.push({ jugador_id: p.id, sobrenombre: p.sobrenombre, sector: "MED_CEN" });
-        }
-      }
-      return asignaciones;
-    }
-
-    return {
-      blanco: asignarSectores(blanco),
-      negro: asignarSectores(negro),
-      niveles: Object.fromEntries(nivelPorJugador),
-    };
+    const { blanco, negro } = armarEquipos(jugadores);
+    return { blanco, negro, niveles: Object.fromEntries(nivelPorJugador) };
   });
 
 // === Armar equipos MANUAL: admin elige quién va a blanco y a negro ===
@@ -104,42 +73,33 @@ const manualInput = z.object({
 export const armarManual = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d) => manualInput.parse(d))
-  .handler(async ({ data, context }) => {
+  .handler(async ({ context, data }) => {
     const { supabase } = context;
     const ids = [...data.blanco_ids, ...data.negro_ids];
     const { data: perfiles } = await supabase
       .from("profiles")
-      .select("id, sobrenombre, sector_1, sector_2, sector_3")
+      .select("id, sobrenombre, es_parche, sector_1, sector_2, sector_3")
       .in("id", ids);
     if (!perfiles) throw new Error("No se pudieron cargar los perfiles");
     const byId = new Map(perfiles.map((p) => [p.id, p]));
 
-    function asignarSectores(equipo_ids: string[]) {
-      const ocupados = new Set<Sector>();
-      const asignaciones: { jugador_id: string; sobrenombre: string; sector: Sector }[] = [];
-      const restantes = equipo_ids.map((id) => byId.get(id)).filter(Boolean) as any[];
-      for (const pref of [1, 2, 3] as const) {
-        for (let i = restantes.length - 1; i >= 0; i--) {
-          const p = restantes[i];
-          const s = (pref === 1 ? p.sector_1 : pref === 2 ? p.sector_2 : p.sector_3) as Sector | null;
-          if (s && !ocupados.has(s)) {
-            asignaciones.push({ jugador_id: p.id, sobrenombre: p.sobrenombre, sector: s });
-            ocupados.add(s);
-            restantes.splice(i, 1);
-          }
-        }
-      }
-      for (const p of restantes) {
-        const libre = SECTORES.find((s) => !ocupados.has(s));
-        if (libre) { asignaciones.push({ jugador_id: p.id, sobrenombre: p.sobrenombre, sector: libre }); ocupados.add(libre); }
-        else asignaciones.push({ jugador_id: p.id, sobrenombre: p.sobrenombre, sector: "MED_CEN" });
-      }
-      return asignaciones;
-    }
+    const toJugador = (id: string): Jugador => {
+      const p = byId.get(id);
+      if (!p) throw new Error(`Perfil no encontrado: ${id}`);
+      return {
+        id: p.id,
+        sobrenombre: p.sobrenombre,
+        nivel: 0, // irrelevante para asignar sectores en modo manual
+        es_parche: p.es_parche,
+        sector_1: p.sector_1,
+        sector_2: p.sector_2,
+        sector_3: p.sector_3,
+      };
+    };
 
     return {
-      blanco: asignarSectores(data.blanco_ids),
-      negro: asignarSectores(data.negro_ids),
+      blanco: asignarSectores(data.blanco_ids.map(toJugador)),
+      negro: asignarSectores(data.negro_ids.map(toJugador)),
     };
   });
 
