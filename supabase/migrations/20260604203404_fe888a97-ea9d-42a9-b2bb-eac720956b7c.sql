@@ -1,0 +1,1 @@
+ALTER TYPE estado_partido ADD VALUE IF NOT EXISTS 'stats' BEFORE 'cerrado';

@@ -1,0 +1,41 @@
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+node_modules
+dist
+dist-ssr
+
+# Archivos temporales de migración (contienen datos/hashes sensibles — nunca commitear)
+supabase/_*.sql
+*.log.err
+.output
+.vinxi
+.tanstack/**
+.nitro
+*.local
+
+# Variables de entorno (nunca commitear — usar .env.example como plantilla)
+.env
+.env.*
+!.env.example
+
+# Wrangler / Cloudflare
+.wrangler/
+.dev.vars
+
+# Editor directories and files
+.vscode/*
+!.vscode/extensions.json
+.idea
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?

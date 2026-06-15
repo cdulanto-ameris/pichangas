@@ -1,0 +1,1 @@
+ALTER VIEW public.ranking_jugadores SET (security_invoker = true);
