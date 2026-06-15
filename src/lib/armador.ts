@@ -28,6 +28,11 @@ function peso(j: Jugador, s: Sector): number {
 // DP sobre máscara de sectores usados (2^9 estados). Reconstruye la asignación.
 // Empates de igual peso se rompen de forma determinista (orden de jugadores y de SECTORES).
 export function asignarSectores(equipo: Jugador[]): Asignacion[] {
+  if (equipo.length > SECTORES.length) {
+    throw new Error(
+      `asignarSectores: equipo (${equipo.length}) excede los sectores disponibles (${SECTORES.length})`,
+    );
+  }
   let dp = new Map<number, { w: number; pick: number[] }>();
   dp.set(0, { w: 0, pick: [] });
   for (let i = 0; i < equipo.length; i++) {
@@ -80,6 +85,7 @@ function maxPuntaje(equipo: Jugador[]): number {
   return best;
 }
 
+// API pública del puntaje de preferencias de un equipo (la usará la futura variante con IA).
 export const puntajeAsignacion = maxPuntaje;
 
 // Combinaciones de `r` elementos del arreglo `pool`.

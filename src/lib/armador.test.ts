@@ -95,6 +95,15 @@ describe("armarEquipos", () => {
     expect(blanco.length + negro.length).toBe(3);
   });
 
+  it("N=2: cada equipo recibe un jugador", () => {
+    const { blanco, negro } = armarEquipos([
+      j("a", "A", [null, null, null], 8),
+      j("b", "B", [null, null, null], 5),
+    ]);
+    expect(blanco).toHaveLength(1);
+    expect(negro).toHaveLength(1);
+  });
+
   it("es determinista: misma entrada, misma salida", () => {
     const jugadores = [
       j("p0", "P0", ["DEF_IZQ", "MED_IZQ", null], 7),
