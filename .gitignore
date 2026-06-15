@@ -10,6 +10,7 @@ lerna-debug.log*
 node_modules
 dist
 dist-ssr
+.netlify
 
 # Archivos temporales de migración (contienen datos/hashes sensibles — nunca commitear)
 supabase/_*.sql

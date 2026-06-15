@@ -10,3 +10,5 @@
 [build.environment]
   # Vite 7 requiere Node >= 20.19 o >= 22.12
   NODE_VERSION = "22"
+  # Fuerza el preset de Netlify de Nitro (además de la auto-detección).
+  SERVER_PRESET = "netlify"
