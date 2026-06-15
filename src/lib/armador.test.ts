@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { asignarSectores, type Jugador } from "./armador";
+import { armarEquipos, asignarSectores, type Jugador } from "./armador";
 import type { Sector } from "./sectores";
 
 function j(
@@ -66,5 +66,42 @@ describe("asignarSectores", () => {
     const byId = Object.fromEntries(asignarSectores(eq).map((x) => [x.jugador_id, x.sector]));
     expect(byId.real).toBe("DEF_CEN");
     expect(byId.parche).not.toBe("DEF_CEN");
+  });
+});
+
+describe("armarEquipos", () => {
+  it("reparte minimizando la diferencia de nivel entre equipos", () => {
+    const jugadores = [
+      j("p0", "P0", ["DEF_IZQ", null, null], 10),
+      j("p1", "P1", ["DEF_CEN", null, null], 1),
+      j("p2", "P2", ["MED_IZQ", null, null], 6),
+      j("p3", "P3", ["DEL_DER", null, null], 5),
+    ];
+    const { blanco, negro } = armarEquipos(jugadores);
+    const idsB = new Set(blanco.map((x) => x.jugador_id));
+    const idsN = new Set(negro.map((x) => x.jugador_id));
+    expect(idsB).toEqual(new Set(["p0", "p1"]));
+    expect(idsN).toEqual(new Set(["p2", "p3"]));
+  });
+
+  it("hace equipos de tamaño parejo (±1) con N impar", () => {
+    const jugadores = [
+      j("p0", "P0", [null, null, null], 5),
+      j("p1", "P1", [null, null, null], 5),
+      j("p2", "P2", [null, null, null], 5),
+    ];
+    const { blanco, negro } = armarEquipos(jugadores);
+    expect(Math.abs(blanco.length - negro.length)).toBe(1);
+    expect(blanco.length + negro.length).toBe(3);
+  });
+
+  it("es determinista: misma entrada, misma salida", () => {
+    const jugadores = [
+      j("p0", "P0", ["DEF_IZQ", "MED_IZQ", null], 7),
+      j("p1", "P1", ["DEF_CEN", null, null], 6),
+      j("p2", "P2", ["MED_CEN", null, null], 8),
+      j("p3", "P3", ["DEL_DER", null, null], 5),
+    ];
+    expect(armarEquipos(jugadores)).toEqual(armarEquipos(jugadores));
   });
 });
