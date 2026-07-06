@@ -7,6 +7,8 @@ import { HudHeader } from "@/components/HudHeader";
 import { SECTORES, SECTOR_LABELS, type Sector, SECTOR_COORDS } from "@/lib/sectores";
 import { getSeasonRatings, getPlayerHistory } from "@/lib/ratings.functions";
 import { RatingBadge, ResultDot } from "@/components/RatingBadge";
+import { PlayerAvatar } from "@/components/PlayerAvatar";
+import { cropToSquareBlob } from "@/lib/image";
 
 export const Route = createFileRoute("/_authenticated/perfil")({
   component: Perfil,
@@ -22,6 +24,8 @@ function Perfil() {
   const [seasonRating, setSeasonRating] = useState<number | null>(null);
   const [historial, setHistorial] = useState<Awaited<ReturnType<typeof getPlayerHistory>>>([]);
   const [notasPublicas, setNotasPublicas] = useState(false);
+  const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
+  const [subiendoFoto, setSubiendoFoto] = useState(false);
 
   const fetchSeason = useServerFn(getSeasonRatings);
   const fetchHistory = useServerFn(getPlayerHistory);
@@ -38,7 +42,7 @@ function Perfil() {
   useEffect(() => {
     if (!user) return;
     supabase.from("profiles").select("*").eq("id", user.id).maybeSingle().then(({ data }) => {
-      if (data) { setSobre(data.sobrenombre); setS1(data.sector_1 ?? ""); setS2(data.sector_2 ?? ""); setS3(data.sector_3 ?? ""); }
+      if (data) { setSobre(data.sobrenombre); setS1(data.sector_1 ?? ""); setS2(data.sector_2 ?? ""); setS3(data.sector_3 ?? ""); setAvatarUrl(data.avatar_url ?? null); }
     });
   }, [user?.id]);
 
@@ -56,6 +60,33 @@ function Perfil() {
     await supabase.auth.updateUser({ data: { sobrenombre: nombre } });
     setSobre(data.sobrenombre);
     setMsg("Guardado ✓");
+  }
+
+  async function subirFoto(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = ""; // permite re-elegir el mismo archivo
+    if (!file || !user) return;
+    if (!file.type.startsWith("image/")) { setMsg("El archivo debe ser una imagen"); return; }
+    setSubiendoFoto(true);
+    setMsg(null);
+    try {
+      const blob = await cropToSquareBlob(file, 512, 0.85);
+      const path = `${user.id}/avatar.jpg`;
+      const { error: upErr } = await supabase.storage
+        .from("avatars")
+        .upload(path, blob, { upsert: true, contentType: "image/jpeg" });
+      if (upErr) throw upErr;
+      const { data: pub } = supabase.storage.from("avatars").getPublicUrl(path);
+      const url = `${pub.publicUrl}?v=${Date.now()}`; // cache-bust
+      const { error: dbErr } = await supabase.from("profiles").update({ avatar_url: url }).eq("id", user.id);
+      if (dbErr) throw dbErr;
+      setAvatarUrl(url);
+      setMsg("Foto actualizada ✓");
+    } catch (err: any) {
+      setMsg(err?.message ?? "No se pudo subir la foto");
+    } finally {
+      setSubiendoFoto(false);
+    }
   }
 
   function clickSector(s: Sector) {
@@ -86,6 +117,16 @@ function Perfil() {
 
         <section className="hud-panel p-4">
           <h2 className="font-bold text-primary text-lg mb-3">Mi ficha</h2>
+          <div className="flex items-center gap-4 mb-4">
+            <PlayerAvatar url={avatarUrl} nombre={sobrenombre} size={72} />
+            <div>
+              <label className={`we-btn we-btn-accent text-xs px-4 py-2 inline-block cursor-pointer ${subiendoFoto ? "opacity-60 pointer-events-none" : ""}`}>
+                {subiendoFoto ? "Subiendo…" : avatarUrl ? "Cambiar foto" : "Subir foto"}
+                <input type="file" accept="image/*" onChange={subirFoto} className="hidden" disabled={subiendoFoto} />
+              </label>
+              <p className="text-[11px] text-muted-foreground mt-1">JPG/PNG. Se recorta a cuadrado automáticamente.</p>
+            </div>
+          </div>
           <label className="block mb-3"><span className="text-xs uppercase">Sobrenombre</span>
             <input value={sobrenombre} onChange={(e)=>setSobre(e.target.value)} className="w-full px-3 py-2 rounded bg-input border border-border" /></label>
           <p className="text-xs text-muted-foreground">Email: {user?.email}</p>

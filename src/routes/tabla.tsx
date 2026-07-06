@@ -5,6 +5,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { HudHeader } from "@/components/HudHeader";
 import { getSeasonRatings } from "@/lib/ratings.functions";
 import { RatingBadge, ResultDot } from "@/components/RatingBadge";
+import { PlayerAvatar } from "@/components/PlayerAvatar";
 
 type Row = { id: string; sobrenombre: string; pj: number; pg: number; pe: number; pp: number; goles: number; asistencias: number; puntos: number };
 type StreakItem = { fecha: string; r: "G" | "P" | "E" | "?" };
@@ -20,12 +21,13 @@ function Dashboard() {
   const [streaks, setStreaks] = useState<Record<string, StreakItem[]>>({});
   const [seasonRatings, setSeasonRatings] = useState<Record<string, { avg: number; n: number }>>({});
   const [notasPublicas, setNotasPublicas] = useState(false);
+  const [avatars, setAvatars] = useState<Record<string, string | null>>({});
 
   const fetchSeason = useServerFn(getSeasonRatings);
 
   useEffect(() => {
     (async () => {
-      const [{ data: rk }, { data: cfg }, { data: stats }] = await Promise.all([
+      const [{ data: rk }, { data: cfg }, { data: stats }, { data: pr }] = await Promise.all([
         supabase.from("ranking_jugadores").select("*"),
         supabase.from("configuracion_global").select("clave, valor").eq("clave", "MOSTRAR_NOTAS_PUBLICAS").maybeSingle(),
         supabase
@@ -34,8 +36,10 @@ function Dashboard() {
           .eq("partidos.estado", "cerrado")
           .order("fecha", { referencedTable: "partidos", ascending: false })
           .limit(2000),
+        supabase.from("profiles").select("id, avatar_url"),
       ]);
       setRows((rk as Row[]) ?? []);
+      setAvatars(Object.fromEntries((pr as any[] ?? []).map((x) => [x.id, x.avatar_url ?? null])));
       const publicas = Boolean((cfg as any)?.valor);
       setNotasPublicas(publicas);
 
@@ -113,7 +117,12 @@ function Dashboard() {
                 {sorted.map((r, i) => (
                   <tr key={r.id} className={`${i % 2 === 0 ? "we-row-odd" : "we-row-even"} hover:we-row-hl transition-colors`}>
                     <td className="px-3 py-2 font-bold text-accent text-center">{i + 1}</td>
-                    <td className="px-3 py-2 font-semibold uppercase tracking-wide">{r.sobrenombre}</td>
+                    <td className="px-3 py-2 font-semibold uppercase tracking-wide">
+                      <span className="flex items-center gap-2 min-w-0">
+                        <PlayerAvatar url={avatars[r.id]} nombre={r.sobrenombre} size={28} />
+                        <span className="truncate">{r.sobrenombre}</span>
+                      </span>
+                    </td>
                     <td className="px-2 py-2 hidden sm:table-cell">
                       <span className="flex gap-1 justify-center">
                         {(streaks[r.id] ?? []).map((s, k) => <ResultDot key={k} r={s.r} />)}

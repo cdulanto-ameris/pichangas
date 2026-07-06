@@ -194,6 +194,7 @@ const declararInput = z.object({
   partido_id: z.string().uuid(),
   goles: z.number().int().min(0).max(20),
   asistencias: z.number().int().min(0).max(20),
+  posicion: sectorEnum.optional(),
 });
 
 export const declararStats = createServerFn({ method: "POST" })
@@ -203,7 +204,7 @@ export const declararStats = createServerFn({ method: "POST" })
     const { supabase, userId } = context;
     const { error } = await supabase
       .from("estadisticas_partido")
-      .update({ goles: data.goles, asistencias: data.asistencias, declarado: true })
+      .update({ goles: data.goles, asistencias: data.asistencias, declarado: true, ...(data.posicion ? { posicion: data.posicion } : {}) })
       .eq("partido_id", data.partido_id)
       .eq("jugador_id", userId);
     if (error) throw new Error(error.message);
@@ -221,6 +222,35 @@ export const declararStats = createServerFn({ method: "POST" })
       .eq("id", data.partido_id);
 
     return { ok: true, goles_blanco_total: totalBlanco, goles_negro_total: totalNegro };
+  });
+
+// === Marcar/desmarcar que pagué la cancha (autodeclarado) ===
+const marcarPagoInput = z.object({
+  partido_id: z.string().uuid(),
+  pagado: z.boolean(),
+});
+
+export const marcarPago = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) => marcarPagoInput.parse(d))
+  .handler(async ({ data, context }) => {
+    const { supabase, userId } = context;
+    // El pago solo tiene sentido una vez terminado el partido.
+    const { data: partido } = await supabase
+      .from("partidos")
+      .select("estado")
+      .eq("id", data.partido_id)
+      .maybeSingle();
+    if (!partido || partido.estado === "abierto") {
+      throw new Error("El partido todavía no permite registrar pagos");
+    }
+    const { error } = await supabase
+      .from("estadisticas_partido")
+      .update({ pagado: data.pagado, pagado_at: data.pagado ? new Date().toISOString() : null })
+      .eq("partido_id", data.partido_id)
+      .eq("jugador_id", userId);
+    if (error) throw new Error(error.message);
+    return { ok: true, pagado: data.pagado };
   });
 
 // === Calificar (anónimo) ===
@@ -280,7 +310,7 @@ export const getRespuestasNotas = createServerFn({ method: "POST" })
 
     const { data: stats, error: statsError } = await supabase
       .from("estadisticas_partido")
-      .select("jugador_id, equipo")
+      .select("jugador_id, equipo, pagado")
       .eq("partido_id", data.partido_id);
     if (statsError) throw new Error(statsError.message);
 
@@ -310,6 +340,7 @@ export const getRespuestasNotas = createServerFn({ method: "POST" })
         equipo: s.equipo,
         respondio: votosByVotante.has(s.jugador_id),
         votos: votosByVotante.get(s.jugador_id) ?? 0,
+        pagado: !!s.pagado,
       }))
       .sort((a, b) => Number(b.respondio) - Number(a.respondio) || a.sobrenombre.localeCompare(b.sobrenombre));
   });

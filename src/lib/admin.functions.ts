@@ -19,6 +19,30 @@ export const toggleConfig = createServerFn({ method: "POST" })
     return { ok: true };
   });
 
+// Guardar el link global de pago de la cancha (string; vacío = sin link).
+export const setLinkPago = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) =>
+    z.object({
+      link: z
+        .string()
+        .trim()
+        .max(500)
+        .refine(
+          (v) => v === "" || /^https:\/\/(www\.)?fintoc\.me\/\S+$/i.test(v),
+          "Debe ser un link https://fintoc.me/… o quedar vacío",
+        ),
+    }).parse(d),
+  )
+  .handler(async ({ data, context }) => {
+    await assertAdmin(context.supabase, context.userId);
+    const { error } = await context.supabase
+      .from("configuracion_global")
+      .upsert({ clave: "LINK_PAGO_CANCHA", valor: data.link });
+    if (error) throw new Error(error.message);
+    return { ok: true };
+  });
+
 export const agregarParche = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d) => z.object({ sobrenombre: z.string().min(2).max(40) }).parse(d))
@@ -44,6 +68,18 @@ export const eliminarCuenta = createServerFn({ method: "POST" })
     await assertAdmin(context.supabase, context.userId);
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
     const { error } = await supabaseAdmin.auth.admin.deleteUser(data.user_id);
+    if (error) throw new Error(error.message);
+    return { ok: true };
+  });
+
+// Reset manual de contraseña por el admin (no hay emails). El admin comunica la nueva por fuera.
+export const resetPassword = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) => z.object({ user_id: z.string().uuid(), nueva: z.string().min(6).max(72) }).parse(d))
+  .handler(async ({ data, context }) => {
+    await assertAdmin(context.supabase, context.userId);
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { error } = await supabaseAdmin.auth.admin.updateUserById(data.user_id, { password: data.nueva });
     if (error) throw new Error(error.message);
     return { ok: true };
   });

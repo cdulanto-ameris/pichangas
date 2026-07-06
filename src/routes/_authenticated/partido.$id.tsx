@@ -3,11 +3,13 @@ import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useServerFn } from "@tanstack/react-start";
 import { HudHeader } from "@/components/HudHeader";
-import { declararStats, calificar, cerrarPartido, definirGanador, eliminarPartido, getMisNotas, getRespuestasNotas } from "@/lib/partidos.functions";
+import { declararStats, calificar, cerrarPartido, definirGanador, eliminarPartido, getMisNotas, getRespuestasNotas, marcarPago } from "@/lib/partidos.functions";
 import { getMatchRatings } from "@/lib/ratings.functions";
 import { useSession, useIsAdmin } from "@/hooks/useSession";
 import { RatingBadge } from "@/components/RatingBadge";
+import { PlayerAvatar } from "@/components/PlayerAvatar";
 import { ratingClasses, formatMatchRating, RATING_INICIAL } from "@/lib/sofascore";
+import { SECTORES, SECTOR_LABELS, SECTOR_COORDS, type Sector } from "@/lib/sectores";
 import { Slider } from "@/components/ui/slider";
 
 const clampNota = (n: number) => {
@@ -24,7 +26,7 @@ type Partido = {
   goles_blanco_total: number; goles_negro_total: number;
   equipo_blanco: any[]; equipo_negro: any[];
 };
-type Stat = { jugador_id: string; equipo: string; goles: number; asistencias: number; declarado: boolean };
+type Stat = { jugador_id: string; equipo: string; goles: number; asistencias: number; declarado: boolean; pagado?: boolean; posicion?: Sector | null };
 
 export const Route = createFileRoute("/_authenticated/partido/$id")({
   component: PartidoPage,
@@ -37,14 +39,17 @@ function PartidoPage() {
   const navigate = useNavigate();
   const [partido, setPartido] = useState<Partido | null>(null);
   const [stats, setStats] = useState<Stat[]>([]);
-  const [profiles, setProfiles] = useState<Record<string, { sobrenombre: string; es_parche: boolean }>>({});
+  const [profiles, setProfiles] = useState<Record<string, { sobrenombre: string; es_parche: boolean; avatar_url?: string | null }>>({});
   const [misGoles, setMisGoles] = useState(0);
   const [misAsist, setMisAsist] = useState(0);
+  const [miPosicion, setMiPosicion] = useState<Sector | "">("");
   const [notas, setNotas] = useState<Record<string, number>>({});
   const [notasCargadas, setNotasCargadas] = useState(false);
   const [guardandoNotas, setGuardandoNotas] = useState(false);
   const [respuestasTick, setRespuestasTick] = useState(0);
   const [ganador, setGanador] = useState<"blanco"|"negro">("blanco");
+  const [linkPago, setLinkPago] = useState<string>("");
+  const marcarPagoFn = useServerFn(marcarPago);
 
   const declarar = useServerFn(declararStats);
   const votar = useServerFn(calificar);
@@ -74,32 +79,43 @@ function PartidoPage() {
   async function reload() {
     const { data: p } = await supabase.from("partidos").select("*").eq("id", id).maybeSingle();
     setPartido(p as any);
+    const { data: cfg } = await supabase.from("configuracion_global").select("valor").eq("clave", "LINK_PAGO_CANCHA").maybeSingle();
+    setLinkPago(typeof (cfg as any)?.valor === "string" ? (cfg as any).valor : "");
     const { data: s } = await supabase.from("estadisticas_partido").select("*").eq("partido_id", id);
     setStats((s as Stat[]) ?? []);
     const eb = Array.isArray(p?.equipo_blanco) ? (p!.equipo_blanco as any[]) : [];
     const en = Array.isArray(p?.equipo_negro) ? (p!.equipo_negro as any[]) : [];
     const ids = [...eb, ...en].map((x:any)=>x.jugador_id);
     if (ids.length) {
-      const { data: pr } = await supabase.from("profiles").select("id, sobrenombre, es_parche").in("id", ids);
-      setProfiles(Object.fromEntries((pr ?? []).map((x:any)=>[x.id, { sobrenombre: x.sobrenombre, es_parche: !!x.es_parche }])));
+      const { data: pr } = await supabase.from("profiles").select("id, sobrenombre, es_parche, avatar_url").in("id", ids);
+      setProfiles(Object.fromEntries((pr ?? []).map((x:any)=>[x.id, { sobrenombre: x.sobrenombre, es_parche: !!x.es_parche, avatar_url: x.avatar_url ?? null }])));
     }
   }
   useEffect(() => { reload(); }, [id]);
 
   useEffect(() => {
-    if (!user || !stats.length) return;
+    if (!user || !stats.length || !partido) return;
     const mi = stats.find(s => s.jugador_id === user.id);
-    if (mi) { setMisGoles(mi.goles); setMisAsist(mi.asistencias); }
-  }, [user?.id, stats.length]);
+    if (mi) {
+      setMisGoles(mi.goles); setMisAsist(mi.asistencias);
+      const asignado = [
+        ...(Array.isArray(partido.equipo_blanco) ? partido.equipo_blanco : []),
+        ...(Array.isArray(partido.equipo_negro) ? partido.equipo_negro : []),
+      ].find((x:any) => x.jugador_id === user.id)?.sector as Sector | undefined;
+      setMiPosicion(mi.posicion ?? asignado ?? "");
+    }
+  }, [user?.id, stats.length, partido?.id]);
 
   if (!partido) return <div className="p-8 text-center"><HudHeader />Cargando partido…</div>;
 
-  const miEquipo = stats.find(s => s.jugador_id === user?.id)?.equipo;
+  const miStat = stats.find(s => s.jugador_id === user?.id);
+  const miEquipo = miStat?.equipo;
   const compañeros = stats.filter(s => s.equipo === miEquipo && s.jugador_id !== user?.id && !profiles[s.jugador_id]?.es_parche);
-  const todos = stats;
+  const soyParche = !!profiles[user?.id ?? ""]?.es_parche;
+  const puedoPagar = !!user && !!miStat && !soyParche && (partido.estado === "stats" || partido.estado === "cerrado");
 
   async function doDeclarar() {
-    await declarar({ data: { partido_id: id, goles: misGoles, asistencias: misAsist } });
+    await declarar({ data: { partido_id: id, goles: misGoles, asistencias: misAsist, posicion: miPosicion || undefined } });
     await reload();
   }
   async function doVotar() {
@@ -115,6 +131,10 @@ function PartidoPage() {
     } finally {
       setGuardandoNotas(false);
     }
+  }
+  async function doPagar(pagado: boolean) {
+    await marcarPagoFn({ data: { partido_id: id, pagado } });
+    await reload();
   }
   async function doDefinirGanador() {
     await definir({ data: { partido_id: id, ganador } });
@@ -170,6 +190,38 @@ function PartidoPage() {
           <EquipoCard titulo="EQUIPO NEGRO" players={partido.equipo_negro} stats={stats.filter(s=>s.equipo==="negro")} profiles={profiles} color="black" partidoId={id} showRatings={partido.estado === "cerrado"} />
         </div>
 
+        {puedoPagar && (
+          <div className="hud-panel overflow-hidden">
+            <div className="hud-header-bar px-4 py-2 flex items-center justify-between">
+              <span className="hud-tab-title text-sm">PAGO CANCHA</span>
+              {miStat?.pagado && <span className="text-[10px] uppercase tracking-[0.25em] text-accent">Pagado ✓</span>}
+            </div>
+            <div className="p-4 flex flex-wrap items-center gap-3">
+              {linkPago ? (
+                <>
+                  <a href={linkPago} target="_blank" rel="noopener noreferrer" className="we-btn we-btn-accent px-5 py-2.5 text-xs">
+                    Pagar la cancha →
+                  </a>
+                  {miStat?.pagado ? (
+                    <button onClick={()=>doPagar(false)} className="we-btn px-5 py-2.5 text-xs border border-primary/40 hover:bg-secondary/60">
+                      Marcar como no pagado
+                    </button>
+                  ) : (
+                    <button onClick={()=>doPagar(true)} className="we-btn we-btn-accent px-5 py-2.5 text-xs">
+                      Ya pagué
+                    </button>
+                  )}
+                  <span className="text-[11px] text-foreground/60">
+                    Pagá por el link y luego marcá «Ya pagué». Es a modo de honor: el admin ve la lista.
+                  </span>
+                </>
+              ) : (
+                <span className="text-sm text-foreground/70">El admin aún no cargó el link de pago.</span>
+              )}
+            </div>
+          </div>
+        )}
+
         {partido.estado === "abierto" && (
           <div className="hud-panel overflow-hidden">
             <div className="hud-header-bar px-4 py-2"><span className="hud-tab-title text-sm">PASO 1 · ESPERANDO RESULTADO</span></div>
@@ -182,11 +234,28 @@ function PartidoPage() {
         {partido.estado === "stats" && user && miEquipo && (
           <div className="hud-panel overflow-hidden">
             <div className="hud-header-bar px-4 py-2"><span className="hud-tab-title text-sm">PASO 2 · DECLARAR MIS STATS</span></div>
-            <div className="p-4 flex gap-3 items-end flex-wrap">
-              <label className="flex-1 min-w-[120px]"><span className="text-[11px] uppercase tracking-widest text-foreground/70">Goles</span>
-                <input type="number" min={0} max={20} value={misGoles} onChange={(e)=>setMisGoles(clampStat(+e.target.value))} className="w-full px-3 py-2 rounded bg-input border border-primary/30 mt-1" /></label>
-              <label className="flex-1 min-w-[120px]"><span className="text-[11px] uppercase tracking-widest text-foreground/70">Asistencias</span>
-                <input type="number" min={0} max={20} value={misAsist} onChange={(e)=>setMisAsist(clampStat(+e.target.value))} className="w-full px-3 py-2 rounded bg-input border border-primary/30 mt-1" /></label>
+            <div className="p-4 space-y-4">
+              <div className="flex gap-3 items-end flex-wrap">
+                <label className="flex-1 min-w-[120px]"><span className="text-[11px] uppercase tracking-widest text-foreground/70">Goles</span>
+                  <input type="number" min={0} max={20} value={misGoles} onChange={(e)=>setMisGoles(clampStat(+e.target.value))} className="w-full px-3 py-2 rounded bg-input border border-primary/30 mt-1" /></label>
+                <label className="flex-1 min-w-[120px]"><span className="text-[11px] uppercase tracking-widest text-foreground/70">Asistencias</span>
+                  <input type="number" min={0} max={20} value={misAsist} onChange={(e)=>setMisAsist(clampStat(+e.target.value))} className="w-full px-3 py-2 rounded bg-input border border-primary/30 mt-1" /></label>
+              </div>
+              <div>
+                <span className="text-[11px] uppercase tracking-widest text-foreground/70">¿En qué posición jugaste? <span className="text-foreground/40 normal-case tracking-normal">(opcional · define la formación)</span></span>
+                <div className="grid grid-cols-3 gap-1 pitch-bg p-2 rounded max-w-[240px] aspect-square mt-1">
+                  {[0,1,2].map(row => [0,1,2].map(col => {
+                    const s = SECTORES.find(x => { const c = SECTOR_COORDS[x as Sector]; return c.row === 2 - row && c.col === col; }) as Sector;
+                    const active = miPosicion === s;
+                    return (
+                      <button key={s} type="button" onClick={()=>setMiPosicion(s)}
+                        className={`aspect-square rounded border-2 text-[9px] font-bold uppercase leading-tight transition ${active ? "bg-accent text-accent-foreground border-accent glow-accent" : "bg-black/30 text-white border-white/40 hover:bg-black/50"}`}>
+                        {SECTOR_LABELS[s]}
+                      </button>
+                    );
+                  }))}
+                </div>
+              </div>
               <button onClick={doDeclarar} className="we-btn we-btn-accent px-5 py-2.5 text-xs">Declarar</button>
             </div>
           </div>
@@ -228,7 +297,7 @@ function PartidoPage() {
           </div>
         )}
 
-        {isAdmin && partido.estado === "stats" && <AdminRatingResponses partidoId={id} refreshKey={respuestasTick} />}
+        {isAdmin && (partido.estado === "stats" || partido.estado === "cerrado") && <AdminRatingResponses partidoId={id} refreshKey={respuestasTick} />}
 
         {partido.estado === "cerrado" && isAdmin && (
           <MatchRatingsAdmin partidoId={id} profiles={profiles} stats={stats} />
@@ -284,6 +353,7 @@ function EquipoCard({ titulo, players, stats, profiles, color, partidoId, showRa
               {showRatings && (esParche
                 ? <span className="inline-flex items-center justify-center w-9 h-7 rounded text-[10px] font-bold bg-muted text-muted-foreground" title="Parche · sin nota">—</span>
                 : <RatingBadge nota={r?.avg ?? null} size="md" />)}
+              <PlayerAvatar url={prof?.avatar_url} nombre={prof?.sobrenombre ?? p.sobrenombre} size={32} />
               <span className="flex-1 font-semibold uppercase tracking-wide truncate">
                 {prof?.sobrenombre ?? p.sobrenombre}
                 {esParche && <span className="ml-1.5 text-[9px] uppercase tracking-widest text-accent">parche</span>}
@@ -311,19 +381,22 @@ function EquipoCard({ titulo, players, stats, profiles, color, partidoId, showRa
 
 function AdminRatingResponses({ partidoId, refreshKey }: { partidoId: string; refreshKey: number }) {
   const fetchRespuestas = useServerFn(getRespuestasNotas);
-  const [respuestas, setRespuestas] = useState<Array<{ jugador_id: string; sobrenombre: string; equipo: string; respondio: boolean; votos: number }>>([]);
+  const [respuestas, setRespuestas] = useState<Array<{ jugador_id: string; sobrenombre: string; equipo: string; respondio: boolean; votos: number; pagado: boolean }>>([]);
 
   useEffect(() => {
     fetchRespuestas({ data: { partido_id: partidoId } }).then(setRespuestas).catch(() => setRespuestas([]));
   }, [partidoId, refreshKey]);
 
   const respondieron = respuestas.filter((r) => r.respondio).length;
+  const pagaron = respuestas.filter((r) => r.pagado).length;
 
   return (
     <div className="hud-panel overflow-hidden">
-      <div className="hud-header-bar px-4 py-2 flex items-center justify-between">
-        <span className="hud-tab-title text-sm text-accent">RESPUESTAS DE NOTAS · ADMIN</span>
-        <span className="text-[10px] uppercase tracking-[0.25em] text-foreground/70">{respondieron}/{respuestas.length}</span>
+      <div className="hud-header-bar px-4 py-2 flex items-center justify-between gap-3 flex-wrap">
+        <span className="hud-tab-title text-sm text-accent">RESPUESTAS Y PAGOS · ADMIN</span>
+        <span className="text-[10px] uppercase tracking-[0.25em] text-foreground/70">
+          notas {respondieron}/{respuestas.length} · pagaron {pagaron}/{respuestas.length}
+        </span>
       </div>
       <ul className="text-sm grid sm:grid-cols-2 gap-0 p-3">
         {respuestas.map((r) => (
@@ -332,8 +405,13 @@ function AdminRatingResponses({ partidoId, refreshKey }: { partidoId: string; re
               <span className={`w-3 h-3 rounded-full border shrink-0 ${r.equipo === "blanco" ? "bg-white border-white" : "bg-black border-white/60"}`} />
               <span className="font-semibold uppercase tracking-wide truncate">{r.sobrenombre}</span>
             </span>
-            <span className={`text-[10px] uppercase tracking-widest font-bold ${r.respondio ? "text-accent" : "text-muted-foreground"}`}>
-              {r.respondio ? `Respondió · ${r.votos}` : "Pendiente"}
+            <span className="flex items-center gap-2 shrink-0">
+              <span className={`text-[10px] uppercase tracking-widest font-bold ${r.respondio ? "text-accent" : "text-muted-foreground"}`}>
+                {r.respondio ? `Notas · ${r.votos}` : "Sin notas"}
+              </span>
+              <span className={`inline-flex items-center justify-center text-[10px] uppercase tracking-widest font-bold px-1.5 py-0.5 rounded ${r.pagado ? "bg-emerald-600 text-white" : "bg-muted text-muted-foreground"}`}>
+                {r.pagado ? "Pagó" : "Debe"}
+              </span>
             </span>
           </li>
         ))}

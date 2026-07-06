@@ -30,6 +30,9 @@ supabase/_*.sql
 .wrangler/
 .dev.vars
 
+# Mockups del companion visual de brainstorming (efímeros)
+.superpowers/
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

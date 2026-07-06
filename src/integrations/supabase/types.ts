@@ -90,7 +90,10 @@ export type Database = {
           goles: number
           id: string
           jugador_id: string
+          pagado: boolean
+          pagado_at: string | null
           partido_id: string
+          posicion: Database["public"]["Enums"]["sector_cancha"] | null
           updated_at: string
         }
         Insert: {
@@ -101,7 +104,10 @@ export type Database = {
           goles?: number
           id?: string
           jugador_id: string
+          pagado?: boolean
+          pagado_at?: string | null
           partido_id: string
+          posicion?: Database["public"]["Enums"]["sector_cancha"] | null
           updated_at?: string
         }
         Update: {
@@ -112,7 +118,10 @@ export type Database = {
           goles?: number
           id?: string
           jugador_id?: string
+          pagado?: boolean
+          pagado_at?: string | null
           partido_id?: string
+          posicion?: Database["public"]["Enums"]["sector_cancha"] | null
           updated_at?: string
         }
         Relationships: [
@@ -183,6 +192,7 @@ export type Database = {
       }
       profiles: {
         Row: {
+          avatar_url: string | null
           created_at: string
           es_parche: boolean
           id: string
@@ -193,6 +203,7 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          avatar_url?: string | null
           created_at?: string
           es_parche?: boolean
           id: string
@@ -203,6 +214,7 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          avatar_url?: string | null
           created_at?: string
           es_parche?: boolean
           id?: string

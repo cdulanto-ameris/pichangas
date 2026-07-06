@@ -3,9 +3,10 @@ import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useServerFn } from "@tanstack/react-start";
 import { HudHeader } from "@/components/HudHeader";
-import { toggleConfig, agregarParche, eliminarCuenta, setRol } from "@/lib/admin.functions";
+import { toggleConfig, setLinkPago, agregarParche, eliminarCuenta, setRol, resetPassword } from "@/lib/admin.functions";
 import { getSeasonRatings } from "@/lib/ratings.functions";
 import { RatingBadge } from "@/components/RatingBadge";
+import { PlayerAvatar } from "@/components/PlayerAvatar";
 import { useIsAdmin } from "@/hooks/useSession";
 
 
@@ -21,10 +22,14 @@ function AdminPanel() {
   const [roles, setRoles] = useState<Record<string, string>>({});
   const [ratings, setRatings] = useState<Record<string, { avg: number; n: number }>>({});
   const [parcheNom, setParcheNom] = useState("");
+  const [linkPago, setLinkPagoInput] = useState("");
+  const [linkMsg, setLinkMsg] = useState<string | null>(null);
   const tg = useServerFn(toggleConfig);
+  const saveLink = useServerFn(setLinkPago);
   const addP = useServerFn(agregarParche);
   const delU = useServerFn(eliminarCuenta);
   const sRol = useServerFn(setRol);
+  const rPass = useServerFn(resetPassword);
   const fetchSeason = useServerFn(getSeasonRatings);
 
   async function reload() {
@@ -36,7 +41,9 @@ function AdminPanel() {
       supabase.from("partidos").select("*").order("created_at", { ascending: false }).limit(20),
     ]);
     setProfiles(p ?? []);
-    setConfig(Object.fromEntries((c ?? []).map((x:any) => [x.clave, x.valor])));
+    const cfg = Object.fromEntries((c ?? []).map((x:any) => [x.clave, x.valor]));
+    setConfig(cfg);
+    setLinkPagoInput(typeof cfg.LINK_PAGO_CANCHA === "string" ? cfg.LINK_PAGO_CANCHA : "");
     setRoles(Object.fromEntries((r ?? []).map((x:any) => [x.user_id, x.role])));
     setPartidos(pa ?? []);
     fetchSeason().then(setRatings).catch(() => setRatings({}));
@@ -62,6 +69,29 @@ function AdminPanel() {
               Notas públicas: {config.MOSTRAR_NOTAS_PUBLICAS ? "SÍ" : "NO"}
             </button>
           </div>
+          <div className="mt-4">
+            <label className="block">
+              <span className="text-xs uppercase tracking-widest text-muted-foreground">Link de pago de la cancha (Fintoc)</span>
+              <div className="flex gap-2 mt-1">
+                <input
+                  value={linkPago}
+                  onChange={(e)=>{ setLinkPagoInput(e.target.value); setLinkMsg(null); }}
+                  placeholder="https://fintoc.me/…"
+                  className="flex-1 px-3 py-2 rounded bg-input border border-border"
+                />
+                <button
+                  onClick={async ()=>{
+                    try { await saveLink({ data: { link: linkPago.trim() } }); setLinkMsg("Guardado ✓"); reload(); }
+                    catch (err:any) { setLinkMsg(err?.message ?? "No se pudo guardar"); }
+                  }}
+                  className="px-4 py-2 rounded bg-accent text-accent-foreground font-bold uppercase">Guardar</button>
+              </div>
+            </label>
+            <p className="text-xs text-muted-foreground mt-1">
+              Vacío = sin link (los jugadores no verán el botón de pago). Debe empezar con <code>https://fintoc.me/</code>.
+            </p>
+            {linkMsg && <p className="text-sm mt-1 text-accent">{linkMsg}</p>}
+          </div>
         </section>
 
         <section className="hud-panel p-4">
@@ -83,7 +113,12 @@ function AdminPanel() {
                   const r = ratings[p.id];
                   return (
                   <tr key={p.id} className="border-t border-border">
-                    <td className="p-2 font-semibold">{p.sobrenombre}{p.es_parche && <span className="ml-2 text-[10px] text-accent uppercase">parche</span>}</td>
+                    <td className="p-2 font-semibold">
+                      <span className="flex items-center gap-2 min-w-0">
+                        <PlayerAvatar url={p.avatar_url} nombre={p.sobrenombre} size={28} />
+                        <span className="truncate">{p.sobrenombre}{p.es_parche && <span className="ml-2 text-[10px] text-accent uppercase">parche</span>}</span>
+                      </span>
+                    </td>
                     <td className="p-2 text-center">
                       <select value={roles[p.id] ?? "jugador"} onChange={async (e)=>{ await sRol({ data: { user_id: p.id, rol: e.target.value as any }}); reload(); }}
                         className="px-2 py-1 rounded bg-input border border-border text-xs">
@@ -96,8 +131,20 @@ function AdminPanel() {
                         : <span className="text-xs text-muted-foreground">—</span>}
                     </td>
                     <td className="p-2 text-center">
-                      <button onClick={async ()=>{ if(confirm(`¿Eliminar ${p.sobrenombre}?`)){ await delU({ data: { user_id: p.id }}); reload(); } }}
-                        className="text-xs px-2 py-1 rounded bg-destructive text-destructive-foreground font-bold">Eliminar</button>
+                      <div className="flex gap-1 justify-center flex-wrap">
+                        {!p.es_parche && (
+                          <button onClick={async ()=>{
+                            const nueva = window.prompt(`Nueva contraseña para ${p.sobrenombre} (mín 6 caracteres):`);
+                            if (nueva == null) return;
+                            if (nueva.length < 6) { alert("La contraseña debe tener al menos 6 caracteres"); return; }
+                            try { await rPass({ data: { user_id: p.id, nueva } }); alert(`Contraseña actualizada. Comunicásela a ${p.sobrenombre}.`); }
+                            catch (e:any) { alert(e?.message ?? "No se pudo actualizar"); }
+                          }}
+                            className="text-xs px-2 py-1 rounded bg-secondary font-bold">Contraseña</button>
+                        )}
+                        <button onClick={async ()=>{ if(confirm(`¿Eliminar ${p.sobrenombre}?`)){ await delU({ data: { user_id: p.id }}); reload(); } }}
+                          className="text-xs px-2 py-1 rounded bg-destructive text-destructive-foreground font-bold">Eliminar</button>
+                      </div>
                     </td>
                   </tr>
                   );

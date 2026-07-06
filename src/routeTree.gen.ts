@@ -14,6 +14,7 @@ import { Route as AuthRouteImport } from './routes/auth'
 import { Route as AuthenticatedRouteRouteImport } from './routes/_authenticated/route'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as AuthenticatedPerfilRouteImport } from './routes/_authenticated/perfil'
+import { Route as AuthenticatedPartidosRouteImport } from './routes/_authenticated/partidos'
 import { Route as AuthenticatedArmadorRouteImport } from './routes/_authenticated/armador'
 import { Route as AuthenticatedAdminRouteImport } from './routes/_authenticated/admin'
 import { Route as AuthenticatedPartidoIdRouteImport } from './routes/_authenticated/partido.$id'
@@ -42,6 +43,11 @@ const AuthenticatedPerfilRoute = AuthenticatedPerfilRouteImport.update({
   path: '/perfil',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
+const AuthenticatedPartidosRoute = AuthenticatedPartidosRouteImport.update({
+  id: '/partidos',
+  path: '/partidos',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
 const AuthenticatedArmadorRoute = AuthenticatedArmadorRouteImport.update({
   id: '/armador',
   path: '/armador',
@@ -64,6 +70,7 @@ export interface FileRoutesByFullPath {
   '/tabla': typeof TablaRoute
   '/admin': typeof AuthenticatedAdminRoute
   '/armador': typeof AuthenticatedArmadorRoute
+  '/partidos': typeof AuthenticatedPartidosRoute
   '/perfil': typeof AuthenticatedPerfilRoute
   '/partido/$id': typeof AuthenticatedPartidoIdRoute
 }
@@ -73,6 +80,7 @@ export interface FileRoutesByTo {
   '/tabla': typeof TablaRoute
   '/admin': typeof AuthenticatedAdminRoute
   '/armador': typeof AuthenticatedArmadorRoute
+  '/partidos': typeof AuthenticatedPartidosRoute
   '/perfil': typeof AuthenticatedPerfilRoute
   '/partido/$id': typeof AuthenticatedPartidoIdRoute
 }
@@ -84,6 +92,7 @@ export interface FileRoutesById {
   '/tabla': typeof TablaRoute
   '/_authenticated/admin': typeof AuthenticatedAdminRoute
   '/_authenticated/armador': typeof AuthenticatedArmadorRoute
+  '/_authenticated/partidos': typeof AuthenticatedPartidosRoute
   '/_authenticated/perfil': typeof AuthenticatedPerfilRoute
   '/_authenticated/partido/$id': typeof AuthenticatedPartidoIdRoute
 }
@@ -95,6 +104,7 @@ export interface FileRouteTypes {
     | '/tabla'
     | '/admin'
     | '/armador'
+    | '/partidos'
     | '/perfil'
     | '/partido/$id'
   fileRoutesByTo: FileRoutesByTo
@@ -104,6 +114,7 @@ export interface FileRouteTypes {
     | '/tabla'
     | '/admin'
     | '/armador'
+    | '/partidos'
     | '/perfil'
     | '/partido/$id'
   id:
@@ -114,6 +125,7 @@ export interface FileRouteTypes {
     | '/tabla'
     | '/_authenticated/admin'
     | '/_authenticated/armador'
+    | '/_authenticated/partidos'
     | '/_authenticated/perfil'
     | '/_authenticated/partido/$id'
   fileRoutesById: FileRoutesById
@@ -162,6 +174,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedPerfilRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/partidos': {
+      id: '/_authenticated/partidos'
+      path: '/partidos'
+      fullPath: '/partidos'
+      preLoaderRoute: typeof AuthenticatedPartidosRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/armador': {
       id: '/_authenticated/armador'
       path: '/armador'
@@ -189,6 +208,7 @@ declare module '@tanstack/react-router' {
 interface AuthenticatedRouteRouteChildren {
   AuthenticatedAdminRoute: typeof AuthenticatedAdminRoute
   AuthenticatedArmadorRoute: typeof AuthenticatedArmadorRoute
+  AuthenticatedPartidosRoute: typeof AuthenticatedPartidosRoute
   AuthenticatedPerfilRoute: typeof AuthenticatedPerfilRoute
   AuthenticatedPartidoIdRoute: typeof AuthenticatedPartidoIdRoute
 }
@@ -196,6 +216,7 @@ interface AuthenticatedRouteRouteChildren {
 const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedAdminRoute: AuthenticatedAdminRoute,
   AuthenticatedArmadorRoute: AuthenticatedArmadorRoute,
+  AuthenticatedPartidosRoute: AuthenticatedPartidosRoute,
   AuthenticatedPerfilRoute: AuthenticatedPerfilRoute,
   AuthenticatedPartidoIdRoute: AuthenticatedPartidoIdRoute,
 }

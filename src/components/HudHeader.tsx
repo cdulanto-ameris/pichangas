@@ -33,11 +33,13 @@ export function HudHeader() {
   const nav = [
     { to: "/", label: "Inicio", section: "CÓMO FUNCIONA" },
     { to: "/tabla", label: "Tabla", section: "GROUP" },
+    { to: "/partidos", label: "Partidos", section: "FORMACIONES", auth: true },
     { to: "/armador", label: "Armador", section: "MATCH SETUP", auth: true },
     { to: "/perfil", label: "Perfil", section: "PROFILE", auth: true },
   ];
 
   const current = nav.find((n) => n.to === pathname) ??
+    (pathname.startsWith("/partidos") ? { section: "FORMACIONES" } : null) ??
     (pathname.startsWith("/partido") ? { section: "VISTA POST-PARTIDO" } : null) ??
     (pathname.startsWith("/admin") ? { section: "ADMIN" } : null);
 
