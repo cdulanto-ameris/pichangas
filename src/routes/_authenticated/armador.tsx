@@ -6,6 +6,7 @@ import { HudHeader } from "@/components/HudHeader";
 import { sugerirEquipos, crearPartido, armarManual } from "@/lib/partidos.functions";
 import { agregarParche } from "@/lib/admin.functions";
 import { SECTORES, SECTOR_COORDS, type Sector } from "@/lib/sectores";
+import { normalizarNombre, coincideBusqueda } from "@/lib/parches";
 
 import { useIsAdmin } from "@/hooks/useSession";
 
@@ -33,6 +34,7 @@ function Armador() {
   const crear = useServerFn(crearPartido);
   const addParche = useServerFn(agregarParche);
   const [parcheNombre, setParcheNombre] = useState("");
+  const [comboAbierto, setComboAbierto] = useState(false);
 
   async function cargarJugadores() {
     const { data } = await supabase.from("profiles").select("id, sobrenombre, es_parche").order("sobrenombre");
@@ -41,6 +43,23 @@ function Armador() {
 
   useEffect(() => { cargarJugadores(); }, []);
 
+  // En modo auto, un parche recién elegido/creado entra al pool de convocados.
+  function autoSeleccionar(id: string) {
+    if (modo !== "auto") return;
+    setSeleccion(prev => {
+      if (prev.size >= 16) return prev;
+      const s = new Set(prev); s.add(id); return s;
+    });
+  }
+
+  // Elegir un parche que YA existe: reutiliza su id, sin crear nada.
+  function usarParcheExistente(p: Profile) {
+    autoSeleccionar(p.id);
+    setParcheNombre("");
+    setComboAbierto(false);
+  }
+
+  // Crear un parche nuevo (solo cuando el nombre no coincide con ninguno existente).
   async function doAddParche() {
     const nombre = parcheNombre.trim();
     if (nombre.length < 2) { alert("Nombre muy corto"); return; }
@@ -48,14 +67,9 @@ function Armador() {
     try {
       const r = await addParche({ data: { sobrenombre: nombre } });
       setParcheNombre("");
+      setComboAbierto(false);
       await cargarJugadores();
-      // auto-seleccionar el parche recién creado
-      if (modo === "auto") {
-        setSeleccion(prev => {
-          if (prev.size >= 16) return prev;
-          const s = new Set(prev); s.add(r.id); return s;
-        });
-      }
+      autoSeleccionar(r.id);
     } catch (e: any) { alert(e.message); }
     finally { setLoading(false); }
   }
@@ -80,6 +94,12 @@ function Armador() {
 
   const jugadoresReales = todos.filter(p => !p.es_parche);
   const parches = todos.filter(p => p.es_parche);
+
+  // Combobox de parches: coincidencias con lo escrito y si el nombre exacto ya existe.
+  const parchesFiltrados = parches.filter(p => coincideBusqueda(p.sobrenombre, parcheNombre));
+  const nombreTrim = parcheNombre.trim();
+  const existeExacto = parches.some(p => normalizarNombre(p.sobrenombre) === normalizarNombre(nombreTrim));
+  const puedeCrear = nombreTrim.length >= 2 && !existeExacto;
 
   function siguienteSectorLibre(equipo: Asig[]): Sector {
     const ocupados = new Set(equipo.map(a => a.sector));
@@ -154,20 +174,51 @@ function Armador() {
           {isAdmin && (
             <div className="mb-3 p-2 rounded border border-accent/40 bg-accent/5">
               <div className="text-[10px] uppercase tracking-wider text-accent font-bold mb-1.5">🩹 Agregar parche (admin)</div>
-              <div className="flex gap-1">
+              <div className="relative">
                 <input
                   value={parcheNombre}
-                  onChange={(e) => setParcheNombre(e.target.value)}
-                  placeholder="Sobrenombre del parche"
-                  className="flex-1 px-2 py-1.5 text-sm rounded bg-background border border-border focus:border-accent outline-none"
+                  onChange={(e) => { setParcheNombre(e.target.value); setComboAbierto(true); }}
+                  onFocus={() => setComboAbierto(true)}
+                  onBlur={() => setTimeout(() => setComboAbierto(false), 120)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Escape") setComboAbierto(false);
+                    if (e.key === "Enter" && puedeCrear && !loading) { e.preventDefault(); doAddParche(); }
+                  }}
+                  placeholder="Buscar o crear parche…"
+                  className="w-full px-2 py-1.5 text-sm rounded bg-background border border-border focus:border-accent outline-none"
                   maxLength={40}
                 />
-                <button
-                  onClick={doAddParche}
-                  disabled={loading || parcheNombre.trim().length < 2}
-                  className="px-3 py-1.5 rounded bg-accent text-accent-foreground text-xs font-bold uppercase tracking-wider disabled:opacity-40">
-                  + Parche
-                </button>
+                {comboAbierto && (parcheNombre.length > 0 || parches.length > 0) && (
+                  <div className="absolute z-20 left-0 right-0 mt-1 rounded border border-border bg-background shadow-lg max-h-[220px] overflow-y-auto">
+                    {parchesFiltrados.map(p => (
+                      <button
+                        key={p.id}
+                        type="button"
+                        onMouseDown={(e) => e.preventDefault()}
+                        onClick={() => usarParcheExistente(p)}
+                        className="flex w-full items-center gap-2 px-2 py-1.5 text-left text-sm hover:bg-secondary/60">
+                        <span>🩹</span>
+                        <span className="font-semibold">{p.sobrenombre}</span>
+                      </button>
+                    ))}
+                    {parchesFiltrados.length === 0 && !puedeCrear && (
+                      <div className="px-2 py-1.5 text-[11px] italic text-muted-foreground">
+                        {nombreTrim.length < 2 ? "Escribe al menos 2 letras…" : "Sin coincidencias."}
+                      </div>
+                    )}
+                    {puedeCrear && (
+                      <button
+                        type="button"
+                        onMouseDown={(e) => e.preventDefault()}
+                        onClick={doAddParche}
+                        disabled={loading}
+                        className="flex w-full items-center gap-2 px-2 py-1.5 text-left text-sm border-t border-border text-accent font-bold hover:bg-accent/10 disabled:opacity-40">
+                        <span>＋</span>
+                        <span>Crear "{nombreTrim}"</span>
+                      </button>
+                    )}
+                  </div>
+                )}
               </div>
             </div>
           )}

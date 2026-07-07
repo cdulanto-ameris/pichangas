@@ -49,6 +49,18 @@ export const agregarParche = createServerFn({ method: "POST" })
   .handler(async ({ data, context }) => {
     await assertAdmin(context.supabase, context.userId);
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { normalizarNombre } = await import("@/lib/parches");
+    // Idempotencia: si ya existe un parche con el mismo nombre (normalizado),
+    // reutilizarlo en vez de crear un usuario fantasma duplicado.
+    const objetivo = normalizarNombre(data.sobrenombre);
+    const { data: existentes } = await supabaseAdmin
+      .from("profiles")
+      .select("id, sobrenombre")
+      .eq("es_parche", true);
+    const yaExiste = (existentes ?? []).find(
+      (p: { id: string; sobrenombre: string }) => normalizarNombre(p.sobrenombre) === objetivo,
+    );
+    if (yaExiste) return { id: yaExiste.id };
     // Crear usuario "fantasma" con email random; los parches no entran al sistema
     const fake = `parche_${Date.now()}_${Math.floor(Math.random()*1e6)}@parche.local`;
     const { data: u, error } = await supabaseAdmin.auth.admin.createUser({
