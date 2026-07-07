@@ -39,7 +39,7 @@ function AuthPage() {
         if (!registroAbierto) throw new Error("El registro está cerrado");
         const { error } = await supabase.auth.signUp({
           email, password,
-          options: { emailRedirectTo: window.location.origin, data: { sobrenombre } },
+          options: { data: { sobrenombre } },
         });
         if (error) throw error;
       }
