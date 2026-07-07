@@ -353,7 +353,7 @@ function EquipoCard({ titulo, players, stats, profiles, color, partidoId, showRa
               {showRatings && (esParche
                 ? <span className="inline-flex items-center justify-center w-9 h-7 rounded text-[10px] font-bold bg-muted text-muted-foreground" title="Parche · sin nota">—</span>
                 : <RatingBadge nota={r?.avg ?? null} size="md" />)}
-              <PlayerAvatar url={prof?.avatar_url} nombre={prof?.sobrenombre ?? p.sobrenombre} size={32} />
+              <PlayerAvatar url={prof?.avatar_url} nombre={prof?.sobrenombre ?? p.sobrenombre} size={32} jugadorId={p.jugador_id} />
               <span className="flex-1 font-semibold uppercase tracking-wide truncate">
                 {prof?.sobrenombre ?? p.sobrenombre}
                 {esParche && <span className="ml-1.5 text-[9px] uppercase tracking-widest text-accent">parche</span>}

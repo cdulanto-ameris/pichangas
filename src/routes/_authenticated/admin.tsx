@@ -115,7 +115,7 @@ function AdminPanel() {
                   <tr key={p.id} className="border-t border-border">
                     <td className="p-2 font-semibold">
                       <span className="flex items-center gap-2 min-w-0">
-                        <PlayerAvatar url={p.avatar_url} nombre={p.sobrenombre} size={28} />
+                        <PlayerAvatar url={p.avatar_url} nombre={p.sobrenombre} size={28} jugadorId={p.id} />
                         <span className="truncate">{p.sobrenombre}{p.es_parche && <span className="ml-2 text-[10px] text-accent uppercase">parche</span>}</span>
                       </span>
                     </td>

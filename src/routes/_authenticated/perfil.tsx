@@ -118,7 +118,7 @@ function Perfil() {
         <section className="hud-panel p-4">
           <h2 className="font-bold text-primary text-lg mb-3">Mi ficha</h2>
           <div className="flex items-center gap-4 mb-4">
-            <PlayerAvatar url={avatarUrl} nombre={sobrenombre} size={72} />
+            <PlayerAvatar url={avatarUrl} nombre={sobrenombre} size={72} jugadorId={user?.id} />
             <div>
               <label className={`we-btn we-btn-accent text-xs px-4 py-2 inline-block cursor-pointer ${subiendoFoto ? "opacity-60 pointer-events-none" : ""}`}>
                 {subiendoFoto ? "Subiendo…" : avatarUrl ? "Cambiar foto" : "Subir foto"}

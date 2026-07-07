@@ -119,7 +119,7 @@ function Dashboard() {
                     <td className="px-3 py-2 font-bold text-accent text-center">{i + 1}</td>
                     <td className="px-3 py-2 font-semibold uppercase tracking-wide">
                       <span className="flex items-center gap-2 min-w-0">
-                        <PlayerAvatar url={avatars[r.id]} nombre={r.sobrenombre} size={28} />
+                        <PlayerAvatar url={avatars[r.id]} nombre={r.sobrenombre} size={28} jugadorId={r.id} />
                         <span className="truncate">{r.sobrenombre}</span>
                       </span>
                     </td>

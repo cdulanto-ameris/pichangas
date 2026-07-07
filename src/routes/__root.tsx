@@ -10,6 +10,7 @@ import {
 import { type ReactNode } from "react";
 
 import appCss from "../styles.css?url";
+import { PerfilProvider } from "@/components/PerfilProvider";
 
 function NotFoundComponent() {
   return (
@@ -84,6 +85,24 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       { name: "twitter:description", content: "Team Lineup Pro manages amateur football teams, generating lineups and tracking player stats." },
     ],
     links: [
+      {
+        rel: "icon",
+        type: "image/svg+xml",
+        href:
+          "data:image/svg+xml," +
+          encodeURIComponent(
+            "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'>" +
+              "<circle cx='50' cy='50' r='46' fill='#fff' stroke='#111' stroke-width='4'/>" +
+              "<polygon points='50,34 65.2,45.1 59.4,62.9 40.6,62.9 34.8,45.1' fill='#111'/>" +
+              "<g stroke='#111' stroke-width='4'>" +
+              "<line x1='50' y1='34' x2='50' y2='6'/>" +
+              "<line x1='65.2' y1='45.1' x2='92' y2='36'/>" +
+              "<line x1='59.4' y1='62.9' x2='76' y2='85'/>" +
+              "<line x1='40.6' y1='62.9' x2='24' y2='85'/>" +
+              "<line x1='34.8' y1='45.1' x2='8' y2='36'/>" +
+              "</g></svg>",
+          ),
+      },
       { rel: "preconnect", href: "https://fonts.googleapis.com" },
       { rel: "preconnect", href: "https://fonts.gstatic.com", crossOrigin: "anonymous" },
       { rel: "stylesheet", href: "https://fonts.googleapis.com/css2?family=Oswald:wght@500;600;700&family=Rajdhani:wght@400;500;600;700&family=Orbitron:wght@600;700;800&display=swap" },
@@ -118,8 +137,10 @@ function RootComponent() {
 
   return (
     <QueryClientProvider client={queryClient}>
-      {/* Required: nested routes render here. Removing <Outlet /> breaks all child routes. */}
-      <Outlet />
+      <PerfilProvider>
+        {/* Required: nested routes render here. Removing <Outlet /> breaks all child routes. */}
+        <Outlet />
+      </PerfilProvider>
     </QueryClientProvider>
   );
 }

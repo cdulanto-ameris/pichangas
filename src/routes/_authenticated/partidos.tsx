@@ -145,6 +145,7 @@ function Banda({ jugadores, color }: { jugadores: Jug[]; color: "white" | "black
             goles={j.goles}
             asistencias={j.asistencias}
             color={color}
+            jugadorId={j.jugador_id}
           />
         ))
       )}

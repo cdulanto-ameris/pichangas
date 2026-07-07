@@ -9,6 +9,7 @@ export function PlayerBadge({
   goles = 0,
   asistencias = 0,
   color,
+  jugadorId,
 }: {
   nombre: string;
   avatarUrl?: string | null;
@@ -16,12 +17,13 @@ export function PlayerBadge({
   goles?: number;
   asistencias?: number;
   color?: "white" | "black";
+  jugadorId?: string;
 }) {
   const ring = color === "white" ? "!border-white" : color === "black" ? "!border-white/70" : "";
   return (
     <div className="flex flex-col items-center w-14 sm:w-16 shrink-0">
       <div className="relative">
-        <PlayerAvatar url={avatarUrl} nombre={nombre} size={44} className={ring} />
+        <PlayerAvatar url={avatarUrl} nombre={nombre} size={44} className={ring} jugadorId={jugadorId} />
         <span className="absolute -bottom-2 left-1/2 -translate-x-1/2">
           <RatingBadge nota={nota} size="sm" />
         </span>
