@@ -50,6 +50,17 @@ export function snapNota(n: number | null | undefined): number {
   return Math.min(RATING_MAX, Math.max(RATING_MIN, Math.round(enPasos * 10) / 10));
 }
 
+/**
+ * Promedio de notas de un equipo, para comparar qué tan parejo quedó el armado.
+ * Los jugadores sin notas cuentan como RATING_INICIAL, que es exactamente lo
+ * que asume el armador al balancear (ver `sugerirEquipos`).
+ */
+export function promedioEquipo(notas: Array<number | null | undefined>): number | null {
+  if (!notas.length) return null;
+  const suma = notas.reduce<number>((acc, n) => acc + (n == null || !Number.isFinite(Number(n)) ? RATING_INICIAL : Number(n)), 0);
+  return suma / notas.length;
+}
+
 /** True si la nota cae exactamente en un paso de 0.5 dentro del rango. */
 export function esNotaValida(n: number): boolean {
   return Number.isFinite(n) && n >= RATING_MIN && n <= RATING_MAX && Number.isInteger(n * 2);

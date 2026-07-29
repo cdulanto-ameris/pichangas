@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { snapNota, esNotaValida, RATING_INICIAL, RATING_MIN, RATING_MAX } from "./sofascore";
+import { snapNota, esNotaValida, promedioEquipo, RATING_INICIAL, RATING_MIN, RATING_MAX } from "./sofascore";
 
 describe("snapNota", () => {
   it("deja intactas las notas que ya caen en el medio punto", () => {
@@ -32,6 +32,28 @@ describe("snapNota", () => {
       expect(Number(v.toFixed(1))).toBe(v);
       expect(esNotaValida(v)).toBe(true);
     }
+  });
+});
+
+describe("promedioEquipo", () => {
+  it("promedia las notas del equipo", () => {
+    expect(promedioEquipo([6, 7, 8])).toBe(7);
+  });
+
+  it("cuenta a los que no tienen nota como 6.5, igual que el armador", () => {
+    expect(promedioEquipo([null, null])).toBe(RATING_INICIAL);
+    expect(promedioEquipo([7.5, null])).toBe(7);
+    expect(promedioEquipo([7.5, undefined])).toBe(7);
+  });
+
+  it("devuelve null si el equipo está vacío", () => {
+    expect(promedioEquipo([])).toBeNull();
+  });
+
+  it("detecta el desbalance entre dos equipos", () => {
+    const flojo = promedioEquipo([6, 6, 6])!;
+    const fuerte = promedioEquipo([8, 8, 8])!;
+    expect(fuerte - flojo).toBe(2);
   });
 });
 

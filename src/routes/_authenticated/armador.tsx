@@ -8,6 +8,9 @@ import { agregarParche } from "@/lib/admin.functions";
 import { SECTORES, type Sector } from "@/lib/sectores";
 import { ordenLineas, columnaVisual, sectorLinea, sectorColumna, type Mitad } from "@/lib/formacion";
 import { normalizarNombre, coincideBusqueda } from "@/lib/parches";
+import { getSeasonRatings } from "@/lib/ratings.functions";
+import { RatingBadge } from "@/components/RatingBadge";
+import { promedioEquipo, formatSeasonRating } from "@/lib/sofascore";
 
 import { useIsAdmin } from "@/hooks/useSession";
 
@@ -36,6 +39,8 @@ function Armador() {
   const addParche = useServerFn(agregarParche);
   const [parcheNombre, setParcheNombre] = useState("");
   const [comboAbierto, setComboAbierto] = useState(false);
+  const [notas, setNotas] = useState<Record<string, { avg: number; n: number }>>({});
+  const fetchSeason = useServerFn(getSeasonRatings);
 
   async function cargarJugadores() {
     const { data } = await supabase.from("profiles").select("id, sobrenombre, es_parche").order("sobrenombre");
@@ -43,6 +48,13 @@ function Armador() {
   }
 
   useEffect(() => { cargarJugadores(); }, []);
+
+  // Notas de temporada: son las que usa el armador para balancear, así que
+  // mostrarlas deja ver de una si los equipos quedaron parejos.
+  useEffect(() => {
+    fetchSeason().then(setNotas).catch(() => setNotas({}));
+  }, []);
+  const notaDe = (jugador_id: string) => notas[jugador_id]?.avg ?? null;
 
   // En modo auto, un parche recién elegido/creado entra al pool de convocados.
   function autoSeleccionar(id: string) {
@@ -317,8 +329,11 @@ function Armador() {
               {blanco.length === 8 && negro.length === 8 ? "3-3-2 / 3-3-2" : "Esperando equipos…"}
             </span>
           </div>
-          <div className="p-3">
-            <Cancha blanco={blanco} negro={negro} />
+          <div className="p-3 space-y-2">
+            {(blanco.length > 0 || negro.length > 0) && (
+              <BalanceEquipos blanco={blanco} negro={negro} notaDe={notaDe} />
+            )}
+            <Cancha blanco={blanco} negro={negro} notaDe={notaDe} />
           </div>
         </section>
       </main>
@@ -326,7 +341,39 @@ function Armador() {
   );
 }
 
-function Cancha({ blanco, negro }: { blanco: Asig[]; negro: Asig[] }) {
+type NotaDe = (jugador_id: string) => number | null;
+
+/** Promedio de cada equipo lado a lado, para ver de una si quedaron parejos. */
+function BalanceEquipos({ blanco, negro, notaDe }: { blanco: Asig[]; negro: Asig[]; notaDe: NotaDe }) {
+  const promB = promedioEquipo(blanco.map(a => notaDe(a.jugador_id)));
+  const promN = promedioEquipo(negro.map(a => notaDe(a.jugador_id)));
+  const dif = promB != null && promN != null ? Math.abs(promB - promN) : null;
+  const sinNota = [...blanco, ...negro].filter(a => notaDe(a.jugador_id) == null).length;
+
+  return (
+    <div className="flex flex-col items-center gap-0.5">
+      <div className="flex items-center justify-center gap-2 text-[10px] uppercase tracking-[0.2em] text-foreground/70">
+        <span className="w-3 h-3 rounded-full bg-white border border-white" />
+        <RatingBadge nota={promB} size="sm" decimals={2} />
+        <span className="text-foreground/50">vs</span>
+        <RatingBadge nota={promN} size="sm" decimals={2} />
+        <span className="w-3 h-3 rounded-full bg-black border border-white/60" />
+        {dif != null && (
+          <span className={`ml-1 ${dif <= 0.25 ? "text-accent" : "text-foreground/70"}`}>
+            Δ {formatSeasonRating(dif)}
+          </span>
+        )}
+      </div>
+      {sinNota > 0 && (
+        <span className="text-[9px] uppercase tracking-[0.15em] text-foreground/45">
+          {sinNota} sin nota · cuentan 6.50 en el promedio
+        </span>
+      )}
+    </div>
+  );
+}
+
+function Cancha({ blanco, negro, notaDe }: { blanco: Asig[]; negro: Asig[]; notaDe: NotaDe }) {
   return (
     <div className="pitch-bg rounded-md p-4 relative aspect-[3/4] min-h-[600px] overflow-hidden">
       <div className="pitch-line absolute top-1/2 left-0 right-0 h-px" />
@@ -338,12 +385,12 @@ function Cancha({ blanco, negro }: { blanco: Asig[]; negro: Asig[] }) {
       <div className="absolute bottom-0 left-1/2 -translate-x-1/2 w-[28%] h-[6%] border-2 border-b-0 border-white/85" />
 
       <div className="absolute top-[6%] left-2 right-2 h-[40%]">
-        <GridEquipo asignaciones={blanco} color="white" mitad="arriba" />
+        <GridEquipo asignaciones={blanco} color="white" mitad="arriba" notaDe={notaDe} />
       </div>
       <Arquero color="white" pos="top" />
 
       <div className="absolute bottom-[6%] left-2 right-2 h-[40%]">
-        <GridEquipo asignaciones={negro} color="black" mitad="abajo" />
+        <GridEquipo asignaciones={negro} color="black" mitad="abajo" notaDe={notaDe} />
       </div>
       <Arquero color="black" pos="bottom" />
     </div>
@@ -359,7 +406,7 @@ function Arquero({ color, pos }: { color: "white"|"black"; pos: "top"|"bottom" }
   );
 }
 
-function GridEquipo({ asignaciones, color, mitad }: { asignaciones: Asig[]; color: "white"|"black"; mitad: Mitad }) {
+function GridEquipo({ asignaciones, color, mitad, notaDe }: { asignaciones: Asig[]; color: "white"|"black"; mitad: Mitad; notaDe: NotaDe }) {
   const lineas = ordenLineas(mitad);
   return (
     <div className="grid grid-rows-3 grid-cols-3 gap-1 h-full w-full">
@@ -371,8 +418,16 @@ function GridEquipo({ asignaciones, color, mitad }: { asignaciones: Asig[]; colo
           <div key={`${row}-${col}`} className="flex items-center justify-center">
             {a && (
               <div className="flex flex-col items-center gap-1">
-                <div className={`we-jersey ${color === "white" ? "we-jersey-white" : "we-jersey-black"} text-[11px]`}>
-                  {a.sobrenombre.slice(0,2).toUpperCase()}
+                <div className="relative">
+                  <div className={`we-jersey ${color === "white" ? "we-jersey-white" : "we-jersey-black"} text-[11px]`}>
+                    {a.sobrenombre.slice(0,2).toUpperCase()}
+                  </div>
+                  <RatingBadge
+                    nota={notaDe(a.jugador_id)}
+                    size="sm"
+                    decimals={2}
+                    className="absolute -top-1.5 -right-3 ring-1 ring-black/50 shadow"
+                  />
                 </div>
                 <span className="we-name-tag">{a.sobrenombre}</span>
               </div>
