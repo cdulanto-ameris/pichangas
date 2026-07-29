@@ -3,6 +3,7 @@ import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { SECTORES } from "@/lib/sectores";
 import { armarEquipos, asignarSectores, type Jugador } from "@/lib/armador";
+import { esNotaValida } from "@/lib/sofascore";
 
 const sectorEnum = z.enum(SECTORES);
 
@@ -256,7 +257,11 @@ export const marcarPago = createServerFn({ method: "POST" })
 // === Calificar (anónimo) ===
 const calificarInput = z.object({
   partido_id: z.string().uuid(),
-  notas: z.array(z.object({ calificado_id: z.string().uuid(), nota: z.number().min(1).max(10) })).min(1).max(15),
+  // Las notas van de 1.0 a 10.0 en pasos de 0.5 (6 - 6.5 - 7 …).
+  notas: z.array(z.object({
+    calificado_id: z.string().uuid(),
+    nota: z.number().min(1).max(10).refine(esNotaValida, "La nota debe ir de a 0.5"),
+  })).min(1).max(15),
 });
 
 export const calificar = createServerFn({ method: "POST" })

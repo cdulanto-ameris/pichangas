@@ -8,18 +8,11 @@ import { getMatchRatings } from "@/lib/ratings.functions";
 import { useSession, useIsAdmin } from "@/hooks/useSession";
 import { RatingBadge } from "@/components/RatingBadge";
 import { PlayerAvatar } from "@/components/PlayerAvatar";
-import { ratingClasses, formatMatchRating, RATING_INICIAL } from "@/lib/sofascore";
+import { ratingClasses, formatMatchRating, snapNota, RATING_INICIAL, RATING_MIN, RATING_MAX, RATING_STEP } from "@/lib/sofascore";
 import { SECTORES, SECTOR_LABELS, SECTOR_COORDS, type Sector } from "@/lib/sectores";
-import { Slider } from "@/components/ui/slider";
+import { Stepper } from "@/components/Stepper";
 
-const clampNota = (n: number) => {
-  if (!Number.isFinite(n)) return RATING_INICIAL;
-  return Math.min(10, Math.max(1, Math.round(n * 10) / 10));
-};
-const clampStat = (n: number) => {
-  if (!Number.isFinite(n)) return 0;
-  return Math.min(20, Math.max(0, Math.floor(n)));
-};
+const STAT_MAX = 20;
 
 type Partido = {
   id: string; estado: string; ganador: string | null;
@@ -120,7 +113,7 @@ function PartidoPage() {
   }
   async function doVotar() {
     if (guardandoNotas) return;
-    const arr = compañeros.map((c) => ({ calificado_id: c.jugador_id, nota: notas[c.jugador_id] ?? RATING_INICIAL }));
+    const arr = compañeros.map((c) => ({ calificado_id: c.jugador_id, nota: snapNota(notas[c.jugador_id] ?? RATING_INICIAL) }));
     if (!arr.length) return alert("Asigna al menos una nota");
     setGuardandoNotas(true);
     try {
@@ -235,11 +228,15 @@ function PartidoPage() {
           <div className="hud-panel overflow-hidden">
             <div className="hud-header-bar px-4 py-2"><span className="hud-tab-title text-sm">PASO 2 · DECLARAR MIS STATS</span></div>
             <div className="p-4 space-y-4">
-              <div className="flex gap-3 items-end flex-wrap">
-                <label className="flex-1 min-w-[120px]"><span className="text-[11px] uppercase tracking-widest text-foreground/70">Goles</span>
-                  <input type="number" min={0} max={20} value={misGoles} onChange={(e)=>setMisGoles(clampStat(+e.target.value))} className="w-full px-3 py-2 rounded bg-input border border-primary/30 mt-1" /></label>
-                <label className="flex-1 min-w-[120px]"><span className="text-[11px] uppercase tracking-widest text-foreground/70">Asistencias</span>
-                  <input type="number" min={0} max={20} value={misAsist} onChange={(e)=>setMisAsist(clampStat(+e.target.value))} className="w-full px-3 py-2 rounded bg-input border border-primary/30 mt-1" /></label>
+              <div className="flex gap-4 flex-wrap">
+                <div>
+                  <span className="text-[11px] uppercase tracking-widest text-foreground/70 block mb-1">Goles</span>
+                  <Stepper value={misGoles} onChange={setMisGoles} min={0} max={STAT_MAX} step={1} label="goles" />
+                </div>
+                <div>
+                  <span className="text-[11px] uppercase tracking-widest text-foreground/70 block mb-1">Asistencias</span>
+                  <Stepper value={misAsist} onChange={setMisAsist} min={0} max={STAT_MAX} step={1} label="asistencias" />
+                </div>
               </div>
               <div>
                 <span className="text-[11px] uppercase tracking-widest text-foreground/70">¿En qué posición jugaste? <span className="text-foreground/40 normal-case tracking-normal">(opcional · define la formación)</span></span>
@@ -266,26 +263,25 @@ function PartidoPage() {
             <div className="hud-header-bar px-4 py-2"><span className="hud-tab-title text-sm">CALIFICAR COMPAÑEROS · ANÓNIMO 1.0 - 10.0</span></div>
             <div className="p-4">
               <p className="text-[11px] uppercase tracking-widest text-foreground/60 mb-3">
-                Escala Sofascore. Promedio inicial: <b>{RATING_INICIAL.toFixed(1)}</b>.
+                Escala Sofascore, de a {RATING_STEP.toFixed(1)}. Nota inicial: <b>{RATING_INICIAL.toFixed(1)}</b>.
                 {!notasCargadas && <span className="ml-2 text-accent">Cargando tus notas…</span>}
               </p>
               <div className="grid sm:grid-cols-2 gap-3">
                 {compañeros.map(c => {
-                  const v = clampNota(notas[c.jugador_id] ?? RATING_INICIAL);
+                  const v = snapNota(notas[c.jugador_id] ?? RATING_INICIAL);
                   return (
                     <div key={c.jugador_id} className="flex items-center gap-3 px-3 py-2 we-row-odd rounded">
-                      <span className="flex-1 font-semibold uppercase tracking-wide text-sm">{profiles[c.jugador_id]?.sobrenombre ?? "?"}</span>
-                      <Slider
-                        min={1}
-                        max={10}
-                        step={0.1}
-                        value={[v]}
-                        onValueChange={(vals) => setNotas({ ...notas, [c.jugador_id]: clampNota(vals[0]) })}
-                        className="flex-1 min-w-[100px]"
+                      <span className="flex-1 min-w-0 font-semibold uppercase tracking-wide text-sm truncate">{profiles[c.jugador_id]?.sobrenombre ?? "?"}</span>
+                      <Stepper
+                        value={v}
+                        onChange={(n) => setNotas({ ...notas, [c.jugador_id]: snapNota(n) })}
+                        min={RATING_MIN}
+                        max={RATING_MAX}
+                        step={RATING_STEP}
+                        format={formatMatchRating}
+                        valueClassName={ratingClasses(v)}
+                        label={`nota de ${profiles[c.jugador_id]?.sobrenombre ?? "jugador"}`}
                       />
-                      <span className={`px-2 py-1 rounded text-xs font-bold tabular-nums min-w-[2.75rem] text-center ${ratingClasses(v)}`}>
-                        {formatMatchRating(v)}
-                      </span>
                     </div>
                   );
                 })}

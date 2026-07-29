@@ -25,7 +25,6 @@ export function formatSeasonRating(n: number | null | undefined): string {
 }
 
 /** Badge inline reutilizable. */
-import type { CSSProperties } from "react";
 export type RatingBadgeSize = "sm" | "md" | "lg";
 
 export function ratingBadgeSizeClasses(size: RatingBadgeSize): string {
@@ -37,3 +36,21 @@ export function ratingBadgeSizeClasses(size: RatingBadgeSize): string {
 }
 
 export const RATING_INICIAL = 6.5;
+export const RATING_MIN = 1;
+export const RATING_MAX = 10;
+/** Las notas se dan de a medio punto: 6 - 6.5 - 7 - 7.5 … */
+export const RATING_STEP = 0.5;
+
+/** Ajusta una nota al medio punto más cercano dentro del rango 1.0 - 10.0. */
+export function snapNota(n: number | null | undefined): number {
+  if (n == null) return RATING_INICIAL;
+  const v = Number(n);
+  if (!Number.isFinite(v)) return RATING_INICIAL;
+  const enPasos = Math.round(v / RATING_STEP) * RATING_STEP;
+  return Math.min(RATING_MAX, Math.max(RATING_MIN, Math.round(enPasos * 10) / 10));
+}
+
+/** True si la nota cae exactamente en un paso de 0.5 dentro del rango. */
+export function esNotaValida(n: number): boolean {
+  return Number.isFinite(n) && n >= RATING_MIN && n <= RATING_MAX && Number.isInteger(n * 2);
+}
