@@ -6,9 +6,9 @@ import { HudHeader } from "@/components/HudHeader";
 import { getSeasonRatings } from "@/lib/ratings.functions";
 import { RatingBadge, ResultDot } from "@/components/RatingBadge";
 import { PlayerAvatar } from "@/components/PlayerAvatar";
+import { construirRachas, ESTADOS_CON_RESULTADO, type RachaItem } from "@/lib/rachas";
 
 type Row = { id: string; sobrenombre: string; pj: number; pg: number; pe: number; pp: number; goles: number; asistencias: number; puntos: number };
-type StreakItem = { fecha: string; r: "G" | "P" | "E" | "?" };
 
 export const Route = createFileRoute("/tabla")({
   ssr: false,
@@ -18,7 +18,7 @@ export const Route = createFileRoute("/tabla")({
 function Dashboard() {
   const [rows, setRows] = useState<Row[]>([]);
   const [tab, setTab] = useState<"ranking" | "goles" | "asist">("ranking");
-  const [streaks, setStreaks] = useState<Record<string, StreakItem[]>>({});
+  const [streaks, setStreaks] = useState<Record<string, RachaItem[]>>({});
   const [seasonRatings, setSeasonRatings] = useState<Record<string, { avg: number; n: number }>>({});
   const [notasPublicas, setNotasPublicas] = useState(false);
   const [avatars, setAvatars] = useState<Record<string, string | null>>({});
@@ -33,7 +33,7 @@ function Dashboard() {
         supabase
           .from("estadisticas_partido")
           .select("jugador_id, equipo, partidos!inner(fecha, estado, ganador)")
-          .eq("partidos.estado", "cerrado")
+          .in("partidos.estado", ESTADOS_CON_RESULTADO)
           .order("fecha", { referencedTable: "partidos", ascending: false })
           .limit(2000),
         supabase.from("profiles").select("id, avatar_url"),
@@ -43,18 +43,7 @@ function Dashboard() {
       const publicas = Boolean((cfg as any)?.valor);
       setNotasPublicas(publicas);
 
-      // armar racha por jugador
-      const map: Record<string, StreakItem[]> = {};
-      for (const s of (stats as any[]) ?? []) {
-        const p = s.partidos;
-        const r: StreakItem["r"] =
-          p.ganador === "empate" ? "E" :
-          s.equipo === p.ganador ? "G" :
-          (p.ganador === "blanco" || p.ganador === "negro") ? "P" : "?";
-        const arr = map[s.jugador_id] ?? (map[s.jugador_id] = []);
-        if (arr.length < 5) arr.push({ fecha: p.fecha, r });
-      }
-      setStreaks(map);
+      setStreaks(construirRachas((stats as any[]) ?? []));
 
       if (publicas) {
         try { setSeasonRatings(await fetchSeason()); } catch { /* ignore */ }
