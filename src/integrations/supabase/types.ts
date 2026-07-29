@@ -196,6 +196,7 @@ export type Database = {
           created_at: string
           es_parche: boolean
           id: string
+          nota_manual: number | null
           sector_1: Database["public"]["Enums"]["sector_cancha"] | null
           sector_2: Database["public"]["Enums"]["sector_cancha"] | null
           sector_3: Database["public"]["Enums"]["sector_cancha"] | null
@@ -207,6 +208,7 @@ export type Database = {
           created_at?: string
           es_parche?: boolean
           id: string
+          nota_manual?: number | null
           sector_1?: Database["public"]["Enums"]["sector_cancha"] | null
           sector_2?: Database["public"]["Enums"]["sector_cancha"] | null
           sector_3?: Database["public"]["Enums"]["sector_cancha"] | null
@@ -218,6 +220,7 @@ export type Database = {
           created_at?: string
           es_parche?: boolean
           id?: string
+          nota_manual?: number | null
           sector_1?: Database["public"]["Enums"]["sector_cancha"] | null
           sector_2?: Database["public"]["Enums"]["sector_cancha"] | null
           sector_3?: Database["public"]["Enums"]["sector_cancha"] | null

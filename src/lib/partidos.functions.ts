@@ -3,7 +3,8 @@ import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { SECTORES } from "@/lib/sectores";
 import { armarEquipos, asignarSectores, type Jugador } from "@/lib/armador";
-import { esNotaValida } from "@/lib/sofascore";
+import { esNotaValida, RATING_INICIAL } from "@/lib/sofascore";
+import { resolverNiveles } from "@/lib/niveles";
 
 const sectorEnum = z.enum(SECTORES);
 
@@ -23,7 +24,7 @@ export const sugerirEquipos = createServerFn({ method: "POST" })
     // 1. Cargar perfiles
     const { data: perfiles } = await supabase
       .from("profiles")
-      .select("id, sobrenombre, es_parche, sector_1, sector_2, sector_3")
+      .select("id, sobrenombre, es_parche, nota_manual, sector_1, sector_2, sector_3")
       .in("id", jugadores_ids);
     if (!perfiles) throw new Error("No se pudieron cargar los perfiles");
 
@@ -35,25 +36,14 @@ export const sugerirEquipos = createServerFn({ method: "POST" })
       .select("calificado_id, nota")
       .in("calificado_id", jugadores_ids);
 
-    const nivelPorJugador = new Map<string, number>();
-    for (const id of jugadores_ids) nivelPorJugador.set(id, 6.5);
-    if (notas) {
-      const agrupado = new Map<string, { sum: number; n: number }>();
-      for (const r of notas) {
-        const cur = agrupado.get(r.calificado_id) ?? { sum: 0, n: 0 };
-        cur.sum += Number(r.nota);
-        cur.n += 1;
-        agrupado.set(r.calificado_id, cur);
-      }
-      for (const [id, v] of agrupado) nivelPorJugador.set(id, v.sum / v.n);
-    }
+    const nivelPorJugador = resolverNiveles(perfiles, notas ?? []);
 
     // 3. Construir jugadores (ordenados por id para reproducibilidad) y armar.
     const jugadores: Jugador[] = perfiles
       .map((p) => ({
         id: p.id,
         sobrenombre: p.sobrenombre,
-        nivel: nivelPorJugador.get(p.id) ?? 6.5,
+        nivel: nivelPorJugador.get(p.id) ?? RATING_INICIAL,
         es_parche: p.es_parche,
         sector_1: p.sector_1,
         sector_2: p.sector_2,

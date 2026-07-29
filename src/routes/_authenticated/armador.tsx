@@ -10,11 +10,15 @@ import { ordenLineas, columnaVisual, sectorLinea, sectorColumna, type Mitad } fr
 import { normalizarNombre, coincideBusqueda } from "@/lib/parches";
 import { getSeasonRatings } from "@/lib/ratings.functions";
 import { RatingBadge } from "@/components/RatingBadge";
-import { promedioEquipo, formatSeasonRating } from "@/lib/sofascore";
+import { Stepper } from "@/components/Stepper";
+import {
+  promedioEquipo, formatSeasonRating, formatMatchRating, snapNota, ratingClasses,
+  RATING_INICIAL, RATING_MIN, RATING_MAX, RATING_STEP,
+} from "@/lib/sofascore";
 
 import { useIsAdmin } from "@/hooks/useSession";
 
-type Profile = { id: string; sobrenombre: string; es_parche: boolean };
+type Profile = { id: string; sobrenombre: string; es_parche: boolean; nota_manual: number | null };
 type Asig = { jugador_id: string; sobrenombre: string; sector: Sector };
 type Modo = "auto" | "manual";
 type Lado = "B" | "N" | null;
@@ -38,12 +42,13 @@ function Armador() {
   const crear = useServerFn(crearPartido);
   const addParche = useServerFn(agregarParche);
   const [parcheNombre, setParcheNombre] = useState("");
+  const [parcheNota, setParcheNota] = useState<number>(RATING_INICIAL);
   const [comboAbierto, setComboAbierto] = useState(false);
   const [notas, setNotas] = useState<Record<string, { avg: number; n: number }>>({});
   const fetchSeason = useServerFn(getSeasonRatings);
 
   async function cargarJugadores() {
-    const { data } = await supabase.from("profiles").select("id, sobrenombre, es_parche").order("sobrenombre");
+    const { data } = await supabase.from("profiles").select("id, sobrenombre, es_parche, nota_manual").order("sobrenombre");
     setTodos((data as Profile[]) ?? []);
   }
 
@@ -54,7 +59,10 @@ function Armador() {
   useEffect(() => {
     fetchSeason().then(setNotas).catch(() => setNotas({}));
   }, []);
-  const notaDe = (jugador_id: string) => notas[jugador_id]?.avg ?? null;
+  // Los parches no tienen calificaciones: su nivel es el que fijó el admin.
+  const notaManualPorId = new Map(todos.map(p => [p.id, p.nota_manual]));
+  const notaDe = (jugador_id: string) =>
+    notas[jugador_id]?.avg ?? notaManualPorId.get(jugador_id) ?? null;
 
   // En modo auto, un parche recién elegido/creado entra al pool de convocados.
   function autoSeleccionar(id: string) {
@@ -73,13 +81,16 @@ function Armador() {
   }
 
   // Crear un parche nuevo (solo cuando el nombre no coincide con ninguno existente).
+  // Se crea con la nota que eligió el admin: sin eso el armador lo trataría
+  // como un 6.5 y los equipos quedarían desparejos.
   async function doAddParche() {
     const nombre = parcheNombre.trim();
     if (nombre.length < 2) { alert("Nombre muy corto"); return; }
     setLoading(true);
     try {
-      const r = await addParche({ data: { sobrenombre: nombre } });
+      const r = await addParche({ data: { sobrenombre: nombre, nota: snapNota(parcheNota) } });
       setParcheNombre("");
+      setParcheNota(RATING_INICIAL);
       setComboAbierto(false);
       await cargarJugadores();
       autoSeleccionar(r.id);
@@ -211,7 +222,8 @@ function Armador() {
                         onClick={() => usarParcheExistente(p)}
                         className="flex w-full items-center gap-2 px-2 py-1.5 text-left text-sm hover:bg-secondary/60">
                         <span>🩹</span>
-                        <span className="font-semibold">{p.sobrenombre}</span>
+                        <span className="font-semibold flex-1 truncate">{p.sobrenombre}</span>
+                        <RatingBadge nota={p.nota_manual} size="sm" />
                       </button>
                     ))}
                     {parchesFiltrados.length === 0 && !puedeCrear && (
@@ -227,12 +239,36 @@ function Armador() {
                         disabled={loading}
                         className="flex w-full items-center gap-2 px-2 py-1.5 text-left text-sm border-t border-border text-accent font-bold hover:bg-accent/10 disabled:opacity-40">
                         <span>＋</span>
-                        <span>Crear "{nombreTrim}"</span>
+                        <span className="flex-1 truncate">Crear "{nombreTrim}"</span>
+                        <span className={`px-1.5 py-0.5 rounded text-[11px] tabular-nums ${ratingClasses(parcheNota)}`}>
+                          {formatMatchRating(parcheNota)}
+                        </span>
                       </button>
                     )}
                   </div>
                 )}
               </div>
+
+              {puedeCrear && (
+                <div className="mt-2 flex items-center justify-between gap-2">
+                  <span className="text-[10px] uppercase tracking-wider text-foreground/70 leading-tight">
+                    Nota del parche
+                    <span className="block normal-case tracking-normal text-foreground/45">
+                      Con esto el armador lo balancea
+                    </span>
+                  </span>
+                  <Stepper
+                    value={parcheNota}
+                    onChange={(n) => setParcheNota(snapNota(n))}
+                    min={RATING_MIN}
+                    max={RATING_MAX}
+                    step={RATING_STEP}
+                    format={formatMatchRating}
+                    valueClassName={ratingClasses(parcheNota)}
+                    label="nota del parche"
+                  />
+                </div>
+              )}
             </div>
           )}
 

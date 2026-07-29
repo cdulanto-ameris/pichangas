@@ -3,9 +3,12 @@ import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useServerFn } from "@tanstack/react-start";
 import { HudHeader } from "@/components/HudHeader";
-import { toggleConfig, setLinkPago, agregarParche, eliminarCuenta, setRol, resetPassword } from "@/lib/admin.functions";
+import { toggleConfig, setLinkPago, agregarParche, eliminarCuenta, setRol, resetPassword, setNotaParche } from "@/lib/admin.functions";
 import { getSeasonRatings } from "@/lib/ratings.functions";
 import { RatingBadge } from "@/components/RatingBadge";
+import { NotaParcheEditor } from "@/components/NotaParcheEditor";
+import { Stepper } from "@/components/Stepper";
+import { formatMatchRating, ratingClasses, snapNota, RATING_INICIAL, RATING_MIN, RATING_MAX, RATING_STEP } from "@/lib/sofascore";
 import { PlayerAvatar } from "@/components/PlayerAvatar";
 import { useIsAdmin } from "@/hooks/useSession";
 
@@ -22,6 +25,7 @@ function AdminPanel() {
   const [roles, setRoles] = useState<Record<string, string>>({});
   const [ratings, setRatings] = useState<Record<string, { avg: number; n: number }>>({});
   const [parcheNom, setParcheNom] = useState("");
+  const [parcheNota, setParcheNota] = useState<number>(RATING_INICIAL);
   const [linkPago, setLinkPagoInput] = useState("");
   const [linkMsg, setLinkMsg] = useState<string | null>(null);
   const tg = useServerFn(toggleConfig);
@@ -30,6 +34,7 @@ function AdminPanel() {
   const delU = useServerFn(eliminarCuenta);
   const sRol = useServerFn(setRol);
   const rPass = useServerFn(resetPassword);
+  const sNota = useServerFn(setNotaParche);
   const fetchSeason = useServerFn(getSeasonRatings);
 
   async function reload() {
@@ -96,11 +101,24 @@ function AdminPanel() {
 
         <section className="hud-panel p-4">
           <h2 className="font-bold text-accent text-lg mb-3">➕ Agregar parche</h2>
-          <div className="flex gap-2">
-            <input value={parcheNom} onChange={(e)=>setParcheNom(e.target.value)} placeholder="Sobrenombre del parche" className="flex-1 px-3 py-2 rounded bg-input border border-border" />
-            <button onClick={async ()=>{ if(!parcheNom) return; await addP({ data: { sobrenombre: parcheNom }}); setParcheNom(""); reload(); }}
+          <div className="flex gap-2 flex-wrap items-center">
+            <input value={parcheNom} onChange={(e)=>setParcheNom(e.target.value)} placeholder="Sobrenombre del parche" className="flex-1 min-w-[180px] px-3 py-2 rounded bg-input border border-border" />
+            <Stepper
+              value={parcheNota}
+              onChange={(n)=>setParcheNota(snapNota(n))}
+              min={RATING_MIN}
+              max={RATING_MAX}
+              step={RATING_STEP}
+              format={formatMatchRating}
+              valueClassName={ratingClasses(parcheNota)}
+              label="nota del parche"
+            />
+            <button onClick={async ()=>{ if(!parcheNom) return; await addP({ data: { sobrenombre: parcheNom, nota: snapNota(parcheNota) }}); setParcheNom(""); setParcheNota(RATING_INICIAL); reload(); }}
               className="px-4 py-2 rounded bg-accent text-accent-foreground font-bold uppercase">Agregar</button>
           </div>
+          <p className="text-xs text-muted-foreground mt-1">
+            La nota es la que usa el armador para balancear: los parches no reciben calificaciones, así que sin esto valen 6.5.
+          </p>
         </section>
 
         <section className="hud-panel p-4">
@@ -126,7 +144,13 @@ function AdminPanel() {
                       </select>
                     </td>
                     <td className="p-2 text-center">
-                      {r && r.n > 0
+                      {p.es_parche ? (
+                        <NotaParcheEditor
+                          key={`${p.id}:${p.nota_manual ?? "sin"}`}
+                          valor={p.nota_manual}
+                          onGuardar={async (nota) => { await sNota({ data: { jugador_id: p.id, nota } }); await reload(); }}
+                        />
+                      ) : r && r.n > 0
                         ? <span className="inline-flex items-center gap-1"><RatingBadge nota={r.avg} size="sm" decimals={2} /><span className="text-[10px] text-muted-foreground">·{r.n}</span></span>
                         : <span className="text-xs text-muted-foreground">—</span>}
                     </td>

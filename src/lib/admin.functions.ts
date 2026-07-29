@@ -1,6 +1,10 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
+import { esNotaValida } from "@/lib/sofascore";
+
+/** Nota manual de un parche: mismo rango y paso de 0.5 que el resto de las notas. */
+const notaParche = z.number().refine(esNotaValida, "La nota debe ir de 1.0 a 10.0, de a 0.5");
 
 async function assertAdmin(supabase: any, userId: string) {
   const { data } = await supabase.rpc("has_role", { _user_id: userId, _role: "admin" });
@@ -45,7 +49,9 @@ export const setLinkPago = createServerFn({ method: "POST" })
 
 export const agregarParche = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((d) => z.object({ sobrenombre: z.string().min(2).max(40) }).parse(d))
+  .inputValidator((d) =>
+    z.object({ sobrenombre: z.string().min(2).max(40), nota: notaParche.optional() }).parse(d),
+  )
   .handler(async ({ data, context }) => {
     await assertAdmin(context.supabase, context.userId);
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
@@ -60,7 +66,13 @@ export const agregarParche = createServerFn({ method: "POST" })
     const yaExiste = (existentes ?? []).find(
       (p: { id: string; sobrenombre: string }) => normalizarNombre(p.sobrenombre) === objetivo,
     );
-    if (yaExiste) return { id: yaExiste.id };
+    if (yaExiste) {
+      // Si el admin volvió a mandar una nota, se toma como corrección.
+      if (data.nota != null) {
+        await supabaseAdmin.from("profiles").update({ nota_manual: data.nota }).eq("id", yaExiste.id);
+      }
+      return { id: yaExiste.id };
+    }
     // Crear usuario "fantasma" con email random; los parches no entran al sistema
     const fake = `parche_${Date.now()}_${Math.floor(Math.random()*1e6)}@parche.local`;
     const { data: u, error } = await supabaseAdmin.auth.admin.createUser({
@@ -68,9 +80,37 @@ export const agregarParche = createServerFn({ method: "POST" })
       user_metadata: { sobrenombre: data.sobrenombre },
     });
     if (error || !u.user) throw new Error(error?.message);
-    await supabaseAdmin.from("profiles").upsert({ id: u.user.id, sobrenombre: data.sobrenombre, es_parche: true });
+    await supabaseAdmin.from("profiles").upsert({
+      id: u.user.id, sobrenombre: data.sobrenombre, es_parche: true, nota_manual: data.nota ?? null,
+    });
     await supabaseAdmin.from("user_roles").upsert({ user_id: u.user.id, role: "parche" });
     return { id: u.user.id };
+  });
+
+// Nota manual de un parche. null la borra y el armador vuelve a usar 6.5.
+export const setNotaParche = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) =>
+    z.object({ jugador_id: z.string().uuid(), nota: notaParche.nullable() }).parse(d),
+  )
+  .handler(async ({ data, context }) => {
+    await assertAdmin(context.supabase, context.userId);
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    // Solo parches: los jugadores reales sacan su nivel de las calificaciones
+    // que reciben, y una nota a mano quedaría pisada o compitiendo con esas.
+    const { data: perfil } = await supabaseAdmin
+      .from("profiles")
+      .select("es_parche")
+      .eq("id", data.jugador_id)
+      .maybeSingle();
+    if (!perfil) throw new Error("Jugador no encontrado");
+    if (!perfil.es_parche) throw new Error("Solo se les puede fijar la nota a los parches");
+    const { error } = await supabaseAdmin
+      .from("profiles")
+      .update({ nota_manual: data.nota })
+      .eq("id", data.jugador_id);
+    if (error) throw new Error(error.message);
+    return { ok: true };
   });
 
 export const eliminarCuenta = createServerFn({ method: "POST" })
