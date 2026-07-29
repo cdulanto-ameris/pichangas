@@ -28,8 +28,9 @@ type FilaStat = {
 };
 
 /**
- * Agrupa las estadísticas por jugador y devuelve sus últimos N resultados,
- * del más reciente al más antiguo.
+ * Agrupa las estadísticas por jugador y devuelve sus últimos N resultados en
+ * el orden en que se leen: del más antiguo al más reciente, o sea que el
+ * último partido queda a la derecha.
  */
 export function construirRachas(filas: FilaStat[], largo = RACHA_LARGO): Record<string, RachaItem[]> {
   const map: Record<string, RachaItem[]> = {};
@@ -38,13 +39,14 @@ export function construirRachas(filas: FilaStat[], largo = RACHA_LARGO): Record<
     if (!p) continue;
     (map[s.jugador_id] ??= []).push({ fecha: p.fecha, r: resultadoDe(s.equipo, p.ganador) });
   }
-  // Ordenamos acá y no en el query: el orden por columna de una tabla
-  // embebida no es confiable, y el partido recién resuelto tiene que quedar
-  // primero.
+  // Ordenamos acá y no en el query: el orden por columna de una tabla embebida
+  // no es confiable. Primero de más nuevo a más viejo para quedarnos con los
+  // últimos `largo`, y recién ahí lo damos vuelta para mostrarlo.
   for (const id of Object.keys(map)) {
     map[id] = map[id]
       .sort((a, b) => new Date(b.fecha).getTime() - new Date(a.fecha).getTime())
-      .slice(0, largo);
+      .slice(0, largo)
+      .reverse();
   }
   return map;
 }

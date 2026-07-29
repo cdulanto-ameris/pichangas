@@ -30,14 +30,15 @@ describe("construirRachas", () => {
     expect(ESTADOS_CON_RESULTADO).toContain("cerrado");
   });
 
-  it("deja el partido más reciente primero, sin importar el orden de entrada", () => {
+  it("deja el partido más reciente al final (a la derecha), sin importar el orden de entrada", () => {
     const r = construirRachas([
       fila("a", "blanco", "2026-01-10", "negro"),
       fila("a", "blanco", "2026-07-20", "blanco"),
       fila("a", "negro", "2026-03-05", "empate"),
     ]);
-    expect(r.a.map((x) => x.r)).toEqual(["G", "E", "P"]);
-    expect(r.a[0].fecha).toBe("2026-07-20");
+    expect(r.a.map((x) => x.r)).toEqual(["P", "E", "G"]);
+    expect(r.a[r.a.length - 1].fecha).toBe("2026-07-20");
+    expect(r.a[0].fecha).toBe("2026-01-10");
   });
 
   it("corta en los últimos 5 quedándose con los más nuevos", () => {
@@ -46,8 +47,10 @@ describe("construirRachas", () => {
     );
     const r = construirRachas(filas);
     expect(r.a).toHaveLength(5);
-    expect(r.a[0].fecha).toBe("2026-08-01");
-    expect(r.a[4].fecha).toBe("2026-04-01");
+    // Descarta enero-marzo y muestra abril→agosto de izquierda a derecha.
+    expect(r.a.map((x) => x.fecha)).toEqual([
+      "2026-04-01", "2026-05-01", "2026-06-01", "2026-07-01", "2026-08-01",
+    ]);
   });
 
   it("separa la racha por jugador", () => {
