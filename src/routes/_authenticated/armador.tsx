@@ -5,7 +5,8 @@ import { useServerFn } from "@tanstack/react-start";
 import { HudHeader } from "@/components/HudHeader";
 import { sugerirEquipos, crearPartido, armarManual } from "@/lib/partidos.functions";
 import { agregarParche } from "@/lib/admin.functions";
-import { SECTORES, SECTOR_COORDS, type Sector } from "@/lib/sectores";
+import { SECTORES, type Sector } from "@/lib/sectores";
+import { ordenLineas, columnaVisual, sectorLinea, sectorColumna, type Mitad } from "@/lib/formacion";
 import { normalizarNombre, coincideBusqueda } from "@/lib/parches";
 
 import { useIsAdmin } from "@/hooks/useSession";
@@ -337,12 +338,12 @@ function Cancha({ blanco, negro }: { blanco: Asig[]; negro: Asig[] }) {
       <div className="absolute bottom-0 left-1/2 -translate-x-1/2 w-[28%] h-[6%] border-2 border-b-0 border-white/85" />
 
       <div className="absolute top-[6%] left-2 right-2 h-[40%]">
-        <GridEquipo asignaciones={blanco} color="white" />
+        <GridEquipo asignaciones={blanco} color="white" mitad="arriba" />
       </div>
       <Arquero color="white" pos="top" />
 
       <div className="absolute bottom-[6%] left-2 right-2 h-[40%]">
-        <GridEquipo asignaciones={negro} color="black" invertido />
+        <GridEquipo asignaciones={negro} color="black" mitad="abajo" />
       </div>
       <Arquero color="black" pos="bottom" />
     </div>
@@ -358,15 +359,14 @@ function Arquero({ color, pos }: { color: "white"|"black"; pos: "top"|"bottom" }
   );
 }
 
-function GridEquipo({ asignaciones, color, invertido }: { asignaciones: Asig[]; color: "white"|"black"; invertido?: boolean }) {
+function GridEquipo({ asignaciones, color, mitad }: { asignaciones: Asig[]; color: "white"|"black"; mitad: Mitad }) {
+  const lineas = ordenLineas(mitad);
   return (
     <div className="grid grid-rows-3 grid-cols-3 gap-1 h-full w-full">
       {[0,1,2].map(row => [0,1,2].map(col => {
-        const rowReal = invertido ? row : 2 - row;
-        const a = asignaciones.find(x => {
-          const c = SECTOR_COORDS[x.sector];
-          return c.row === rowReal && c.col === col;
-        });
+        const a = asignaciones.find(
+          x => sectorLinea(x.sector) === lineas[row] && columnaVisual(mitad, sectorColumna(x.sector)) === col,
+        );
         return (
           <div key={`${row}-${col}`} className="flex items-center justify-center">
             {a && (

@@ -18,8 +18,11 @@ export const SECTOR_LABELS: Record<Sector, string> = {
   DEF_DER: 'Defensa Der',
 };
 
-// Coordenadas en la cancha (% desde arriba/izq) para equipo BLANCO (arriba)
-// negro se refleja
+// Posición del sector dentro de la mitad del equipo, siempre relativa al arco
+// PROPIO: row 0 = defensa (junto al arco propio), 1 = medio, 2 = delantera
+// (junto a la mitad de cancha). col 0 = izquierda, 2 = derecha.
+// Para dibujarlo en pantalla hay que saber qué mitad ocupa el equipo:
+// ver `ordenLineas()` en @/lib/formacion.
 export const SECTOR_COORDS: Record<Sector, { row: number; col: number }> = {
   DEL_IZQ: { row: 2, col: 0 }, DEL_CEN: { row: 2, col: 1 }, DEL_DER: { row: 2, col: 2 },
   MED_IZQ: { row: 1, col: 0 }, MED_CEN: { row: 1, col: 1 }, MED_DER: { row: 1, col: 2 },

@@ -5,7 +5,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { HudHeader } from "@/components/HudHeader";
 import { getMatchRatings } from "@/lib/ratings.functions";
 import { PlayerBadge } from "@/components/PlayerBadge";
-import { agruparPorLinea, type Linea } from "@/lib/formacion";
+import { agruparPorLinea, ordenLineas } from "@/lib/formacion";
 import { type Sector } from "@/lib/sectores";
 
 export const Route = createFileRoute("/_authenticated/partidos")({
@@ -154,11 +154,11 @@ function Banda({ jugadores, color }: { jugadores: Jug[]; color: "white" | "black
 }
 
 function Cancha({ blanco, negro, partido }: { blanco: Jug[]; negro: Jug[]; partido: PartidoLite }) {
-  const fBlanco = agruparPorLinea(blanco);
-  const fNegro = agruparPorLinea(negro);
-  // Negro ataca hacia abajo (DEF arriba → DEL al centro); Blanco ataca hacia arriba (DEL al centro → DEF abajo).
-  const ordenNegro: Linea[] = ["DEF", "MED", "DEL"];
-  const ordenBlanco: Linea[] = ["DEL", "MED", "DEF"];
+  // Acá el negro juega arriba y el blanco abajo (al revés que en el armador).
+  const fBlanco = agruparPorLinea(blanco, "abajo");
+  const fNegro = agruparPorLinea(negro, "arriba");
+  const ordenNegro = ordenLineas("arriba");
+  const ordenBlanco = ordenLineas("abajo");
 
   return (
     <div className="hud-panel overflow-hidden">
