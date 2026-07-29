@@ -36,6 +36,8 @@ function PartidoPage() {
   const [misGoles, setMisGoles] = useState(0);
   const [misAsist, setMisAsist] = useState(0);
   const [miPosicion, setMiPosicion] = useState<Sector | "">("");
+  const [estadoDeclarar, setEstadoDeclarar] = useState<"idle" | "guardando" | "ok" | "error">("idle");
+  const [errorDeclarar, setErrorDeclarar] = useState<string | null>(null);
   const [notas, setNotas] = useState<Record<string, number>>({});
   const [notasCargadas, setNotasCargadas] = useState(false);
   const [guardandoNotas, setGuardandoNotas] = useState(false);
@@ -99,17 +101,42 @@ function PartidoPage() {
     }
   }, [user?.id, stats.length, partido?.id]);
 
+  // El "¡Guardado!" del botón vuelve a su estado normal solo; el cartel de
+  // confirmación se queda, porque sale de lo que quedó guardado en el server.
+  useEffect(() => {
+    if (estadoDeclarar !== "ok") return;
+    const t = setTimeout(() => setEstadoDeclarar("idle"), 4000);
+    return () => clearTimeout(t);
+  }, [estadoDeclarar]);
+
   if (!partido) return <div className="p-8 text-center"><HudHeader />Cargando partido…</div>;
 
   const miStat = stats.find(s => s.jugador_id === user?.id);
   const miEquipo = miStat?.equipo;
   const compañeros = stats.filter(s => s.equipo === miEquipo && s.jugador_id !== user?.id && !profiles[s.jugador_id]?.es_parche);
   const soyParche = !!profiles[user?.id ?? ""]?.es_parche;
+  const yaDeclare = !!miStat?.declarado;
+  // Solo tiene sentido avisar de cambios pendientes si ya habías enviado algo:
+  // antes de eso el panel entero está en "sin enviar".
+  const hayCambiosSinEnviar = yaDeclare && !!miStat && (
+    miStat.goles !== misGoles ||
+    miStat.asistencias !== misAsist ||
+    (miStat.posicion ?? "") !== miPosicion
+  );
   const puedoPagar = !!user && !!miStat && !soyParche && (partido.estado === "stats" || partido.estado === "cerrado");
 
   async function doDeclarar() {
-    await declarar({ data: { partido_id: id, goles: misGoles, asistencias: misAsist, posicion: miPosicion || undefined } });
-    await reload();
+    if (estadoDeclarar === "guardando") return;
+    setEstadoDeclarar("guardando");
+    setErrorDeclarar(null);
+    try {
+      await declarar({ data: { partido_id: id, goles: misGoles, asistencias: misAsist, posicion: miPosicion || undefined } });
+      await reload();
+      setEstadoDeclarar("ok");
+    } catch (e: any) {
+      setErrorDeclarar(e?.message ?? "No se pudieron guardar tus stats");
+      setEstadoDeclarar("error");
+    }
   }
   async function doVotar() {
     if (guardandoNotas) return;
@@ -226,7 +253,12 @@ function PartidoPage() {
 
         {partido.estado === "stats" && user && miEquipo && (
           <div className="hud-panel overflow-hidden">
-            <div className="hud-header-bar px-4 py-2"><span className="hud-tab-title text-sm">PASO 2 · DECLARAR MIS STATS</span></div>
+            <div className="hud-header-bar px-4 py-2 flex items-center justify-between gap-2">
+              <span className="hud-tab-title text-sm">PASO 2 · DECLARAR MIS STATS</span>
+              <span className={`text-[10px] uppercase tracking-[0.25em] ${yaDeclare ? "text-accent" : "text-foreground/50"}`}>
+                {yaDeclare ? "Enviado ✓" : "Sin enviar"}
+              </span>
+            </div>
             <div className="p-4 space-y-4">
               <div className="flex gap-4 flex-wrap">
                 <div>
@@ -253,7 +285,50 @@ function PartidoPage() {
                   }))}
                 </div>
               </div>
-              <button onClick={doDeclarar} className="we-btn we-btn-accent px-5 py-2.5 text-xs">Declarar</button>
+              <div className="flex items-center gap-3 flex-wrap">
+                <button
+                  onClick={doDeclarar}
+                  disabled={estadoDeclarar === "guardando"}
+                  className={`we-btn px-5 py-2.5 text-xs disabled:opacity-60 ${
+                    estadoDeclarar === "ok" ? "we-btn-ok glow-ok" : "we-btn-accent"
+                  }`}>
+                  {estadoDeclarar === "guardando" ? "Enviando…"
+                    : estadoDeclarar === "ok" ? "¡Enviado! ✓"
+                    : yaDeclare ? "Actualizar mis stats"
+                    : "Declarar"}
+                </button>
+                {hayCambiosSinEnviar && estadoDeclarar !== "guardando" && (
+                  <span className="text-[11px] uppercase tracking-widest text-yellow-400">
+                    ⚠ Cambios sin enviar
+                  </span>
+                )}
+              </div>
+
+              {estadoDeclarar === "error" && (
+                <div className="rounded border border-destructive bg-destructive/10 px-3 py-2 text-sm text-destructive">
+                  <b>No se pudo enviar.</b> {errorDeclarar} — probá de nuevo.
+                </div>
+              )}
+
+              {yaDeclare && miStat && (
+                <div className={`rounded border px-3 py-2 text-sm transition ${
+                  estadoDeclarar === "ok"
+                    ? "border-emerald-500 bg-emerald-500/15 glow-ok"
+                    : "border-accent/40 bg-accent/5"
+                }`}>
+                  <div className="font-bold text-accent uppercase tracking-wider text-xs mb-0.5">
+                    ✓ Ya enviaste tus stats
+                  </div>
+                  <div className="text-foreground/80">
+                    Quedaron guardados <b>{miStat.goles}</b> {miStat.goles === 1 ? "gol" : "goles"} y{" "}
+                    <b>{miStat.asistencias}</b> {miStat.asistencias === 1 ? "asistencia" : "asistencias"}
+                    {miStat.posicion && <> como <b>{SECTOR_LABELS[miStat.posicion]}</b></>}.
+                  </div>
+                  <div className="text-[11px] text-foreground/50 mt-0.5">
+                    Si te equivocaste, corregí los números y volvé a enviar.
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         )}
