@@ -1239,7 +1239,10 @@ En `Insert` y en `Update` (opcionales):
           explicacion_dt?: string | null
 ```
 
-Mantener el orden alfabético que ya usa el archivo: van justo después de `updated_at`... no — `armado_por` va **antes** de `creado_por` y `explicacion_dt` **entre** `estado` y `fecha`.
+El archivo mantiene las claves en orden alfabético. En las tres secciones:
+
+- `armado_por` va **primero de todo**, antes de `creado_por`.
+- `explicacion_dt` va **entre `estado` y `fecha`**.
 
 - [ ] **Step 5: Verificar que compila**
 
