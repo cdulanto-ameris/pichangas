@@ -5,6 +5,9 @@ import { SECTORES } from "@/lib/sectores";
 import { armarEquipos, asignarSectores, type Jugador } from "@/lib/armador";
 import { esNotaValida, RATING_INICIAL } from "@/lib/sofascore";
 import { resolverNiveles } from "@/lib/niveles";
+import { construirDossier } from "@/lib/dossier";
+import { validarFormacion, aAsignaciones } from "@/lib/formacion-ia";
+import { iaDisponible } from "@/lib/ia.server";
 
 const sectorEnum = z.enum(SECTORES);
 
@@ -53,6 +56,102 @@ export const sugerirEquipos = createServerFn({ method: "POST" })
 
     const { blanco, negro } = armarEquipos(jugadores);
     return { blanco, negro, niveles: Object.fromEntries(nivelPorJugador) };
+  });
+
+// === Sugerir equipos con IA: el director técnico ===
+const sugerirIAInput = z.object({
+  // 16 exactos: el prompt describe una cancha de 8 vs 8 y `crearPartido` ya
+  // exige 8 por lado, así que armar con menos no tiene destino válido.
+  jugadores_ids: z.array(z.string().uuid()).length(16),
+});
+
+export const sugerirEquiposIA = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) => sugerirIAInput.parse(d))
+  .handler(async ({ data, context }) => {
+    const { supabase } = context;
+    const { jugadores_ids } = data;
+
+    const { data: perfiles } = await supabase
+      .from("profiles")
+      .select("id, sobrenombre, es_parche, nota_manual, sector_1, sector_2, sector_3")
+      .in("id", jugadores_ids);
+    if (!perfiles?.length) throw new Error("No se pudieron cargar los perfiles");
+
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+
+    // Se lee con admin porque RLS bloquea el SELECT normal de calificaciones.
+    // Solo se agregan: ningún voto individual sale de este handler.
+    const [{ data: calificaciones }, { data: partidos }] = await Promise.all([
+      supabaseAdmin.from("calificaciones").select("partido_id, calificado_id, nota")
+        .in("calificado_id", jugadores_ids),
+      // 'stats' además de 'cerrado': apenas el admin define el ganador el
+      // partido cuenta, igual que en la tabla de posiciones (ver rachas.ts).
+      supabaseAdmin.from("partidos")
+        .select("id, fecha, ganador, goles_blanco_total, goles_negro_total")
+        .in("estado", ["stats", "cerrado"]),
+    ]);
+
+    const partidosConResultado = partidos ?? [];
+    const { data: stats } = partidosConResultado.length
+      ? await supabaseAdmin.from("estadisticas_partido")
+          .select("partido_id, jugador_id, equipo, goles, asistencias, posicion")
+          .in("partido_id", partidosConResultado.map((p) => p.id))
+      : { data: [] };
+
+    const nivelPorJugador = resolverNiveles(perfiles, calificaciones ?? []);
+    const nombrePorId = new Map(perfiles.map((p) => [p.id, p.sobrenombre]));
+    const niveles = Object.fromEntries(nivelPorJugador);
+
+    // El fallback: mismo camino que `sugerirEquipos`, con el algoritmo probado.
+    const conAlgoritmo = (motivo: string) => {
+      const jugadores: Jugador[] = perfiles
+        .map((p) => ({
+          id: p.id,
+          sobrenombre: p.sobrenombre,
+          nivel: nivelPorJugador.get(p.id) ?? RATING_INICIAL,
+          es_parche: p.es_parche,
+          sector_1: p.sector_1,
+          sector_2: p.sector_2,
+          sector_3: p.sector_3,
+        }))
+        .sort((a, b) => a.id.localeCompare(b.id));
+      const { blanco, negro } = armarEquipos(jugadores);
+      return { blanco, negro, niveles, explicacion: null,
+               armado_por: "algoritmo" as const, motivo_fallback: motivo };
+    };
+
+    if (!iaDisponible()) return conAlgoritmo("No hay API key configurada");
+
+    const dossier = construirDossier({
+      perfiles,
+      partidos: partidosConResultado,
+      stats: (stats ?? []) as any,
+      calificaciones: calificaciones ?? [],
+      hoy: new Date(),
+    });
+
+    try {
+      const { pedirFormacion } = await import("@/lib/ia.server");
+
+      let intento = await pedirFormacion(dossier);
+      let veredicto = validarFormacion(intento, jugadores_ids, nivelPorJugador);
+
+      // Un solo reintento. Un loop de refinamiento multiplica costo y latencia
+      // por una mejora marginal, y el fallback siempre produce algo válido.
+      if (!veredicto.ok) {
+        intento = await pedirFormacion(dossier, { intento, problema: veredicto.problema });
+        veredicto = validarFormacion(intento, jugadores_ids, nivelPorJugador);
+      }
+      if (!veredicto.ok) return conAlgoritmo(veredicto.problema);
+
+      const { blanco, negro } = aAsignaciones(intento, nombrePorId);
+      return { blanco, negro, niveles, explicacion: intento.explicacion,
+               armado_por: "ia" as const };
+    } catch (e: any) {
+      console.error("[armador-ia] falló, se arma con el algoritmo:", e?.message);
+      return conAlgoritmo(e?.message ?? "Error llamando a la IA");
+    }
   });
 
 // === Armar equipos MANUAL: admin elige quién va a blanco y a negro ===
@@ -106,6 +205,8 @@ const crearInput = z.object({
     sobrenombre: z.string(),
     sector: sectorEnum,
   })).length(8),
+  explicacion_dt: z.string().nullish(),
+  armado_por: z.enum(["ia", "algoritmo", "manual"]).nullish(),
 });
 
 export const crearPartido = createServerFn({ method: "POST" })
@@ -124,6 +225,8 @@ export const crearPartido = createServerFn({ method: "POST" })
         equipo_negro: data.equipo_negro,
         creado_por: userId,
         estado: "abierto",
+        explicacion_dt: data.explicacion_dt ?? null,
+        armado_por: data.armado_por ?? null,
       })
       .select("*")
       .single();
