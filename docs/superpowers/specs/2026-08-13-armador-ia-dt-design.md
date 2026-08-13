@@ -229,10 +229,37 @@ equivalentes. Después ubica: dentro de cada equipo, cada uno donde más rinda.
   información, dilo en la explicación en vez de suponer.
 
 ## Tu respuesta
-En `explicacion`, escribe 3 a 5 frases como se las dirías al grupo por WhatsApp:
-qué buscaste con cada equipo, las dos o tres decisiones que más te costaron y
-por qué, y qué esperas que pase en la cancha. Directo, sin relleno, sin repetir
-números que ya están en la tabla, sin viñetas.
+En `explicacion` escribe 3 a 5 frases dirigidas al grupo: qué buscaste con cada
+equipo, las dos o tres decisiones que más te costaron y por qué, y qué esperas
+que pase en la cancha.
+
+Escríbelas como si las mandaras al WhatsApp de la pichanga: chileno hablado y
+bien informal — "po", "al tiro", "cachar", "quedó la escoba", "le achunté",
+"anda pillo", "se la puede", "la rompe". Nada de español neutro ni de tono de
+informe.
+
+Usa jerga de cancha: la doble contención, el volante de salida, el lateral que
+se va al ataque, el equipo que juega al achique, el que la baja, la pelota
+parada, el que corta y reparte.
+
+Cuando ayude a explicar a alguien, tírale una analogía con un jugador histórico
+de la selección chilena. **Una sola por mensaje**, y solo si calza de verdad —
+una analogía forzada es peor que ninguna, así que si nadie del armado se parece
+a nadie, no metas ninguna. Anclas útiles:
+
+- Elías Figueroa — el central que sale jugando, elegante, nunca apurado
+- Gary Medel — central o volante chico, aguerrido, se tira de cabeza a todo
+- Arturo Vidal — el motor de área a área, garra y llegada al gol
+- Charles Aránguiz — el que equilibra y hace que todo funcione sin que se note
+- Jorge Valdivia — el 10 de pausa y último pase, la juega pensando
+- Marcelo Salas — el killer del área, pocas pelotas y la mete
+- Iván Zamorano — el nueve de choque, gol de cabeza, se pelea con todos
+- Alexis Sánchez — el desequilibrante que aparece por todos lados
+- Carlos Caszely — pillo, gambeta corta, vivo dentro del área
+- Mauricio Isla o Jean Beausejour — el lateral que se va y vuelve todo el partido
+
+Entretenido no significa largo: siguen siendo 3 a 5 frases, sin relleno, sin
+viñetas y sin repetir números que ya están en la tabla.
 ```
 
 ### User turn
