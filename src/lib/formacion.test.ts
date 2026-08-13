@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { agruparPorLinea, sectorLinea, sectorColumna, ordenLineas, columnaVisual } from "./formacion";
+import { agruparPorLinea, sectorLinea, sectorColumna, ordenLineas, columnaVisual, nombreFormacion } from "./formacion";
 import { type Sector } from "./sectores";
 
 const j = (id: string, sector: Sector) => ({ id, sector });
@@ -105,5 +105,29 @@ describe("agruparPorLinea", () => {
     expect(filas.DEF.map((x) => x.id)).toEqual(["c", "a", "b"]); // IZQ antes que los dos CEN
     expect(filas.MED).toHaveLength(0);
     expect(filas.DEL).toHaveLength(0);
+  });
+});
+
+describe("nombreFormacion", () => {
+  const en = (...sectores: Sector[]) => sectores.map((sector) => ({ sector }));
+
+  it("nombra el 3-3-2 clásico, con la punta central vacía", () => {
+    expect(nombreFormacion(en(
+      "DEF_IZQ", "DEF_CEN", "DEF_DER",
+      "MED_IZQ", "MED_CEN", "MED_DER",
+      "DEL_IZQ", "DEL_DER",
+    ))).toBe("3-3-2");
+  });
+
+  it("nombra el 3-2-3 ofensivo, con el central de atrás vacío", () => {
+    expect(nombreFormacion(en(
+      "DEF_IZQ", "DEF_DER",
+      "MED_IZQ", "MED_CEN", "MED_DER",
+      "DEL_IZQ", "DEL_CEN", "DEL_DER",
+    ))).toBe("2-3-3");
+  });
+
+  it("con el equipo incompleto devuelve null, para no mostrar una formación falsa", () => {
+    expect(nombreFormacion(en("DEF_IZQ"))).toBeNull();
   });
 });

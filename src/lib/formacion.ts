@@ -55,3 +55,20 @@ export function agruparPorLinea<T extends ConSector>(jugadores: T[], mitad: Mita
   }
   return filas;
 }
+
+/** Cantidad de jugadores de campo por equipo. La casilla que sobra queda vacía. */
+const JUGADORES_DE_CAMPO = 8;
+
+/**
+ * Nombre de la formación leído de la grilla: "3-3-2" es DEF-MED-DEL.
+ * Como son 9 casillas y 8 jugadores, cuál queda vacía define la formación —
+ * por eso el nombre se deriva y no se hardcodea.
+ * Devuelve null si el equipo está incompleto: mostrar "3-2-1" a medio armar
+ * confunde más de lo que informa.
+ */
+export function nombreFormacion(jugadores: ConSector[]): string | null {
+  if (jugadores.length !== JUGADORES_DE_CAMPO) return null;
+  const cuenta: Record<Linea, number> = { DEF: 0, MED: 0, DEL: 0 };
+  for (const j of jugadores) cuenta[sectorLinea(j.sector)] += 1;
+  return LINEAS.map((l) => cuenta[l]).join("-");
+}
