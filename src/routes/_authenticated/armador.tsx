@@ -148,11 +148,17 @@ function Armador() {
     setNegro(n => n.filter(a => a.jugador_id !== jugador_id));
   }
 
+  // Cualquier armado nuevo invalida lo que dijo el DT sobre el anterior: si no
+  // se limpia acá, la explicación se persiste pegada a equipos que no describe.
+  function limpiarArmadoIA() {
+    setExplicacion(null);
+    setAvisoFallback(null);
+  }
+
   async function doSugerir() {
     if (seleccion.size < 2 || seleccion.size > 16) { alert("Selecciona entre 2 y 16 jugadores"); return; }
     setLoading(true);
-    setExplicacion(null);
-    setAvisoFallback(null);
+    limpiarArmadoIA();
     try {
       const r = await sugerir({ data: { jugadores_ids: [...seleccion] } });
       setBlanco(r.blanco); setNegro(r.negro);
@@ -163,8 +169,7 @@ function Armador() {
   async function doSugerirIA() {
     if (seleccion.size !== 16) { alert("El DT necesita los 16 convocados"); return; }
     setPensando(true);
-    setExplicacion(null);
-    setAvisoFallback(null);
+    limpiarArmadoIA();
     try {
       const r = await sugerirIA({ data: { jugadores_ids: [...seleccion] } });
       setBlanco(r.blanco); setNegro(r.negro);
@@ -185,6 +190,7 @@ function Armador() {
       return;
     }
     setLoading(true);
+    limpiarArmadoIA();
     try {
       const r = await manual({ data: { blanco_ids: blancoIds, negro_ids: negroIds } });
       setBlanco(r.blanco); setNegro(r.negro);
@@ -200,7 +206,7 @@ function Armador() {
         equipo_blanco: blanco,
         equipo_negro: negro,
         explicacion_dt: explicacion,
-        armado_por: explicacion ? "ia" : "algoritmo",
+        armado_por: modo === "manual" ? "manual" : explicacion ? "ia" : "algoritmo",
       } });
       navigate({ to: "/partido/$id", params: { id: r.partido_id } });
     } catch (e: any) { alert(e.message); }
@@ -213,11 +219,11 @@ function Armador() {
       <main className="max-w-6xl mx-auto p-4 grid md:grid-cols-[1fr_2fr] gap-4">
         <section className="hud-panel p-4">
           <div className="flex gap-1 mb-3 p-1 bg-secondary/40 rounded">
-            <button onClick={()=>{setModo("auto"); setBlanco([]); setNegro([]);}}
+            <button onClick={()=>{setModo("auto"); setBlanco([]); setNegro([]); limpiarArmadoIA();}}
               className={`flex-1 py-1.5 rounded text-xs uppercase font-bold tracking-wider ${modo==="auto" ? "bg-primary text-primary-foreground" : ""}`}>
               ⚡ Auto
             </button>
-            <button onClick={()=>{setModo("manual"); setBlanco([]); setNegro([]);}}
+            <button onClick={()=>{setModo("manual"); setBlanco([]); setNegro([]); limpiarArmadoIA();}}
               className={`flex-1 py-1.5 rounded text-xs uppercase font-bold tracking-wider ${modo==="manual" ? "bg-primary text-primary-foreground" : ""}`}>
               ✍️ Manual
             </button>
