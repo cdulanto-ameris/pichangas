@@ -14,11 +14,6 @@ export const MODELO_DT = "claude-opus-5";
 // Bajarlo trunca la respuesta a mitad de camino.
 const MAX_TOKENS = 16000;
 
-/** Si no hay key, la app sigue funcionando con el armador determinista. */
-export function iaDisponible(): boolean {
-  return Boolean(process.env.ANTHROPIC_API_KEY);
-}
-
 export type Correccion = { intento: FormacionIA; problema: string };
 
 function turnoDelUsuario(dossier: DossierPartido, correccion?: Correccion): string {
@@ -41,7 +36,9 @@ export async function pedirFormacion(
   dossier: DossierPartido,
   correccion?: Correccion,
 ): Promise<FormacionIA> {
-  const client = new Anthropic(); // lee ANTHROPIC_API_KEY del entorno
+  // maxRetries: 1 para que el reintento HTTP del SDK no se sume al reintento
+  // de armado y multiplique la latencia total.
+  const client = new Anthropic({ maxRetries: 1 }); // lee ANTHROPIC_API_KEY del entorno
 
   const respuesta = await client.messages.parse({
     model: MODELO_DT,

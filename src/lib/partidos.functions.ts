@@ -6,8 +6,9 @@ import { armarEquipos, asignarSectores, type Jugador } from "@/lib/armador";
 import { esNotaValida, RATING_INICIAL } from "@/lib/sofascore";
 import { resolverNiveles } from "@/lib/niveles";
 import { construirDossier } from "@/lib/dossier";
-import { validarFormacion, aAsignaciones } from "@/lib/formacion-ia";
-import { iaDisponible } from "@/lib/ia.server";
+import { aAsignaciones } from "@/lib/formacion-ia";
+import { iaDisponible } from "@/lib/ia-config.server";
+import { armarConDT } from "@/lib/armado-dt";
 
 const sectorEnum = z.enum(SECTORES);
 
@@ -101,16 +102,24 @@ export const sugerirEquiposIA = createServerFn({ method: "POST" })
         .in("calificado_id", jugadores_ids),
       // 'stats' además de 'cerrado': apenas el admin define el ganador el
       // partido cuenta, igual que en la tabla de posiciones (ver rachas.ts).
+      // Orden explícito por fecha: si algún día hay truncado (db-max-rows de
+      // PostgREST), quedan los partidos más recientes y no un subconjunto
+      // arbitrario. Sin `.limit()` a propósito: no hay un tope correcto que fijar acá.
       supabaseAdmin.from("partidos")
         .select("id, fecha, ganador, goles_blanco_total, goles_negro_total")
-        .in("estado", ["stats", "cerrado"]),
+        .in("estado", ["stats", "cerrado"])
+        .order("fecha", { ascending: false }),
     ]);
 
     const partidosConResultado = partidos ?? [];
+    // Acotado a los convocados: nada aguas abajo usa las filas de los demás
+    // jugadores (`historial` es por jugador y `duplasDestacables` filtra por
+    // `ids`), así que traerlas todas era ~16x de filas descartadas.
     const { data: stats } = partidosConResultado.length
       ? await supabaseAdmin.from("estadisticas_partido")
           .select("partido_id, jugador_id, equipo, goles, asistencias, posicion")
           .in("partido_id", partidosConResultado.map((p) => p.id))
+          .in("jugador_id", jugadores_ids)
       : { data: [] };
 
     const nivelPorJugador = resolverNiveles(perfiles, calificaciones ?? []);
@@ -148,19 +157,11 @@ export const sugerirEquiposIA = createServerFn({ method: "POST" })
 
       const { pedirFormacion } = await import("@/lib/ia.server");
 
-      let intento = await pedirFormacion(dossier);
-      let veredicto = validarFormacion(intento, jugadores_ids, nivelPorJugador);
+      const resultado = await armarConDT(dossier, jugadores_ids, nivelPorJugador, pedirFormacion);
+      if (!resultado.ok) return conAlgoritmo(resultado.motivo);
 
-      // Un solo reintento. Un loop de refinamiento multiplica costo y latencia
-      // por una mejora marginal, y el fallback siempre produce algo válido.
-      if (!veredicto.ok) {
-        intento = await pedirFormacion(dossier, { intento, problema: veredicto.problema });
-        veredicto = validarFormacion(intento, jugadores_ids, nivelPorJugador);
-      }
-      if (!veredicto.ok) return conAlgoritmo(veredicto.problema);
-
-      const { blanco, negro } = aAsignaciones(intento, nombrePorId);
-      return { blanco, negro, niveles, explicacion: intento.explicacion,
+      const { blanco, negro } = aAsignaciones(resultado.formacion, nombrePorId);
+      return { blanco, negro, niveles, explicacion: resultado.formacion.explicacion,
                armado_por: "ia" as const };
     } catch (e: any) {
       console.error("[armador-ia] falló, se arma con el algoritmo:", e?.message);
