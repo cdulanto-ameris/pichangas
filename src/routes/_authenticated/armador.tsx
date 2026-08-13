@@ -42,6 +42,7 @@ function Armador() {
   const [pensando, setPensando] = useState(false);
   const [explicacion, setExplicacion] = useState<string | null>(null);
   const [avisoFallback, setAvisoFallback] = useState<string | null>(null);
+  const [armadoPor, setArmadoPor] = useState<"ia" | "algoritmo" | null>(null);
   const manual = useServerFn(armarManual);
   const crear = useServerFn(crearPartido);
   const addParche = useServerFn(agregarParche);
@@ -153,6 +154,7 @@ function Armador() {
   function limpiarArmadoIA() {
     setExplicacion(null);
     setAvisoFallback(null);
+    setArmadoPor(null);
   }
 
   async function doSugerir() {
@@ -174,12 +176,25 @@ function Armador() {
       const r = await sugerirIA({ data: { jugadores_ids: [...seleccion] } });
       setBlanco(r.blanco); setNegro(r.negro);
       setExplicacion(r.explicacion);
+      setArmadoPor(r.armado_por);
       // Que el fallback sea visible es el punto: si el DT no armó, hay que
       // poder saberlo sin mirar los logs.
       if (r.armado_por === "algoritmo") {
         setAvisoFallback(r.motivo_fallback ?? "No se pudo usar la IA");
       }
-    } catch (e: any) { alert(e.message); }
+    } catch (e: any) {
+      // El fallback del servidor vive dentro de la misma invocación, así que un
+      // timeout de la plataforma se lo lleva puesto. Este segundo intento desde
+      // el cliente es lo que sostiene la promesa de no quedarse sin equipos.
+      try {
+        const r = await sugerir({ data: { jugadores_ids: [...seleccion] } });
+        setBlanco(r.blanco); setNegro(r.negro);
+        setArmadoPor("algoritmo");
+        setAvisoFallback(`El DT no alcanzó a responder (${e?.message ?? "error"}), se armó con el algoritmo`);
+      } catch {
+        alert(e?.message ?? "No se pudo armar");
+      }
+    }
     finally { setPensando(false); }
   }
 
@@ -206,7 +221,7 @@ function Armador() {
         equipo_blanco: blanco,
         equipo_negro: negro,
         explicacion_dt: explicacion,
-        armado_por: modo === "manual" ? "manual" : explicacion ? "ia" : "algoritmo",
+        armado_por: modo === "manual" ? "manual" : (armadoPor ?? "algoritmo"),
       } });
       navigate({ to: "/partido/$id", params: { id: r.partido_id } });
     } catch (e: any) { alert(e.message); }
@@ -320,7 +335,7 @@ function Armador() {
                 ))}
                 {todos.length === 0 && <p className="text-xs italic text-muted-foreground">No hay jugadores registrados.</p>}
               </div>
-              <button onClick={doSugerir} disabled={loading || seleccion.size < 2 || seleccion.size > 16}
+              <button onClick={doSugerir} disabled={pensando || loading || seleccion.size < 2 || seleccion.size > 16}
                 className="w-full mt-4 py-2.5 rounded bg-primary text-primary-foreground font-bold uppercase tracking-wider glow-primary disabled:opacity-40">
                 ⚡ Sugerir equipos ({seleccion.size})
               </button>
@@ -389,7 +404,7 @@ function Armador() {
           )}
 
           {isAdmin && blanco.length > 0 && (
-            <button onClick={doCrear} disabled={loading || blanco.length !== 8 || negro.length !== 8}
+            <button onClick={doCrear} disabled={pensando || loading || blanco.length !== 8 || negro.length !== 8}
               className="w-full mt-2 py-2.5 rounded bg-accent text-accent-foreground font-bold uppercase tracking-wider glow-accent disabled:opacity-40">
               ✅ Crear partido {blanco.length !== 8 || negro.length !== 8 ? `(faltan ${16 - blanco.length - negro.length})` : ""}
             </button>
