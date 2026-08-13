@@ -150,11 +150,13 @@ export type Database = {
       }
       partidos: {
         Row: {
+          armado_por: string | null
           creado_por: string | null
           created_at: string
           equipo_blanco: Json
           equipo_negro: Json
           estado: Database["public"]["Enums"]["estado_partido"]
+          explicacion_dt: string | null
           fecha: string
           ganador: Database["public"]["Enums"]["resultado_partido"] | null
           goles_blanco_total: number
@@ -163,11 +165,13 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          armado_por?: string | null
           creado_por?: string | null
           created_at?: string
           equipo_blanco?: Json
           equipo_negro?: Json
           estado?: Database["public"]["Enums"]["estado_partido"]
+          explicacion_dt?: string | null
           fecha?: string
           ganador?: Database["public"]["Enums"]["resultado_partido"] | null
           goles_blanco_total?: number
@@ -176,11 +180,13 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          armado_por?: string | null
           creado_por?: string | null
           created_at?: string
           equipo_blanco?: Json
           equipo_negro?: Json
           estado?: Database["public"]["Enums"]["estado_partido"]
+          explicacion_dt?: string | null
           fecha?: string
           ganador?: Database["public"]["Enums"]["resultado_partido"] | null
           goles_blanco_total?: number
