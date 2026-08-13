@@ -563,7 +563,7 @@ function referenciasGrupo(jugadores: JugadorDossier[], partidos: FilaPartido[]) 
 - [ ] **Step 4: Correr los tests para verificar que pasan**
 
 Run: `npx vitest run src/lib/dossier.test.ts`
-Expected: PASS — 12 tests.
+Expected: PASS — 11 tests (3 de `agregarNota` + 8 de `construirDossier`).
 
 - [ ] **Step 5: Commit**
 
