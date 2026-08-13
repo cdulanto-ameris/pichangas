@@ -5,10 +5,7 @@ import { SECTORES } from "@/lib/sectores";
 import { armarEquipos, asignarSectores, type Jugador } from "@/lib/armador";
 import { esNotaValida, RATING_INICIAL } from "@/lib/sofascore";
 import { resolverNiveles } from "@/lib/niveles";
-import { construirDossier } from "@/lib/dossier";
-import { aAsignaciones } from "@/lib/formacion-ia";
-import { iaDisponible } from "@/lib/ia-config.server";
-import { armarConDT } from "@/lib/armado-dt";
+import { decidirArmado, type ArmadoActual } from "@/lib/armado-dt-decision";
 
 const sectorEnum = z.enum(SECTORES);
 
@@ -59,114 +56,99 @@ export const sugerirEquipos = createServerFn({ method: "POST" })
     return { blanco, negro, niveles: Object.fromEntries(nivelPorJugador) };
   });
 
-// === Sugerir equipos con IA: el director técnico ===
-const sugerirIAInput = z.object({
+// === Armador con IA: el director técnico ===
+// El armado tarda más de lo que aguanta una función síncrona (medido: entre 12
+// y 124 segundos, contra 26 de techo en Netlify), así que se dispara acá y se
+// ejecuta en una background function. Estas dos server functions son el
+// disparador y la consulta; el trabajo vive en `armado-worker.ts`.
+
+const pedirArmadoInput = z.object({
   // 16 exactos: el prompt describe una cancha de 8 vs 8 y `crearPartido` ya
   // exige 8 por lado, así que armar con menos no tiene destino válido.
   jugadores_ids: z.array(z.string().uuid()).length(16),
+  // Lo manda la pantalla cuando el admin confirmó que quiere gastar de nuevo
+  // sobre un armado que ya estaba listo.
+  forzar: z.boolean().optional(),
 });
 
-export const sugerirEquiposIA = createServerFn({ method: "POST" })
+/**
+ * Despierta al trabajador. En Netlify es un POST a la background function; en
+ * local, donde esas no existen, se corre en el mismo proceso — no hay techo de
+ * plataforma acá y la pantalla lo va a ver igual por consulta.
+ */
+async function dispararTrabajador(armadoId: string): Promise<void> {
+  const base = process.env.URL ?? process.env.DEPLOY_PRIME_URL;
+  if (!base) {
+    const { ejecutarArmado } = await import("@/lib/armado-worker");
+    void ejecutarArmado(armadoId);
+    return;
+  }
+  const secreto = process.env.ARMADO_DT_SECRET;
+  if (!secreto) throw new Error("Falta ARMADO_DT_SECRET en el entorno del servidor");
+  await fetch(new URL("/.netlify/functions/armar-dt-background", base), {
+    method: "POST",
+    headers: { "content-type": "application/json", "x-armado-secreto": secreto },
+    body: JSON.stringify({ armado_id: armadoId }),
+  });
+}
+
+export const pedirArmadoDT = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((d) => sugerirIAInput.parse(d))
+  .inputValidator((d) => pedirArmadoInput.parse(d))
   .handler(async ({ data, context }) => {
     const { supabase, userId } = context;
-    const { jugadores_ids } = data;
+    const { jugadores_ids, forzar } = data;
 
-    // Cada armado con el DT gasta hasta dos llamadas a Opus 5 con el dossier
-    // completo: es plata que no se recupera, así que no lo abrimos a cualquiera.
+    // Cada armado con el DT gasta créditos: es plata que no se recupera, así
+    // que no lo abrimos a cualquiera.
     const { data: esAdmin } = await supabase.rpc("has_role", { _user_id: userId, _role: "admin" });
     if (!esAdmin) throw new Error("Solo admins pueden armar con el DT");
 
-    const { data: perfiles } = await supabase
-      .from("profiles")
-      .select("id, sobrenombre, es_parche, nota_manual, sector_1, sector_2, sector_3")
-      .in("id", jugadores_ids);
-    if (!perfiles?.length) throw new Error("No se pudieron cargar los perfiles");
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { data: vigente } = await supabaseAdmin
+      .from("armados_dt")
+      .select("estado, jugadores_ids")
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
 
-    // Con menos perfiles que convocados el armado no puede cerrar 8+8: mejor
-    // fallar acá que gastar dos llamadas al modelo para terminar con equipos
-    // disparejos que igual va a rechazar `crearPartido`.
-    if (perfiles.length !== jugadores_ids.length) {
-      throw new Error(
-        `Se pidieron ${jugadores_ids.length} jugadores y solo se pudieron cargar ${perfiles.length}`,
-      );
-    }
+    const decision = decidirArmado(
+      vigente ? ({ ...vigente } as ArmadoActual) : null,
+      jugadores_ids,
+      forzar ?? false,
+    );
+    if (decision !== "arrancar") return { decision };
+
+    const { data: fila } = await supabaseAdmin
+      .from("armados_dt")
+      .insert({ jugadores_ids, creado_por: userId })
+      .select("id")
+      .maybeSingle();
+
+    // Sin fila es, casi siempre, el índice único: otro admin arrancó un armado
+    // entre la lectura y el insert. Se trata igual que si lo hubiéramos visto.
+    if (!fila) return { decision: "esperar" as const };
+
+    await dispararTrabajador(fila.id);
+    return { decision: "arrancar" as const, id: fila.id };
+  });
+
+/** Estado del armado vigente. La pantalla la consulta mientras el DT piensa. */
+export const getArmadoDT = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    const { supabase, userId } = context;
+    const { data: esAdmin } = await supabase.rpc("has_role", { _user_id: userId, _role: "admin" });
+    if (!esAdmin) return null;
 
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-
-    // Se lee con admin porque RLS bloquea el SELECT normal de calificaciones.
-    // Solo se agregan: ningún voto individual sale de este handler.
-    const [{ data: calificaciones }, { data: partidos }] = await Promise.all([
-      supabaseAdmin.from("calificaciones").select("partido_id, calificado_id, nota")
-        .in("calificado_id", jugadores_ids),
-      // 'stats' además de 'cerrado': apenas el admin define el ganador el
-      // partido cuenta, igual que en la tabla de posiciones (ver rachas.ts).
-      // Orden explícito por fecha: si algún día hay truncado (db-max-rows de
-      // PostgREST), quedan los partidos más recientes y no un subconjunto
-      // arbitrario. Sin `.limit()` a propósito: no hay un tope correcto que fijar acá.
-      supabaseAdmin.from("partidos")
-        .select("id, fecha, ganador, goles_blanco_total, goles_negro_total")
-        .in("estado", ["stats", "cerrado"])
-        .order("fecha", { ascending: false }),
-    ]);
-
-    const partidosConResultado = partidos ?? [];
-    // Acotado a los convocados: nada aguas abajo usa las filas de los demás
-    // jugadores (`historial` es por jugador y `duplasDestacables` filtra por
-    // `ids`), así que traerlas todas era ~16x de filas descartadas.
-    const { data: stats } = partidosConResultado.length
-      ? await supabaseAdmin.from("estadisticas_partido")
-          .select("partido_id, jugador_id, equipo, goles, asistencias, posicion")
-          .in("partido_id", partidosConResultado.map((p) => p.id))
-          .in("jugador_id", jugadores_ids)
-      : { data: [] };
-
-    const nivelPorJugador = resolverNiveles(perfiles, calificaciones ?? []);
-    const nombrePorId = new Map(perfiles.map((p) => [p.id, p.sobrenombre]));
-    const niveles = Object.fromEntries(nivelPorJugador);
-
-    // El fallback: mismo camino que `sugerirEquipos`, con el algoritmo probado.
-    const conAlgoritmo = (motivo: string) => {
-      const jugadores: Jugador[] = perfiles
-        .map((p) => ({
-          id: p.id,
-          sobrenombre: p.sobrenombre,
-          nivel: nivelPorJugador.get(p.id) ?? RATING_INICIAL,
-          es_parche: p.es_parche,
-          sector_1: p.sector_1,
-          sector_2: p.sector_2,
-          sector_3: p.sector_3,
-        }))
-        .sort((a, b) => a.id.localeCompare(b.id));
-      const { blanco, negro } = armarEquipos(jugadores);
-      return { blanco, negro, niveles, explicacion: null,
-               armado_por: "algoritmo" as const, motivo_fallback: motivo };
-    };
-
-    if (!iaDisponible()) return conAlgoritmo("No hay API key configurada");
-
-    try {
-      const dossier = construirDossier({
-        perfiles,
-        partidos: partidosConResultado,
-        stats: (stats ?? []) as any,
-        calificaciones: calificaciones ?? [],
-        hoy: new Date(),
-      });
-
-      const { pedirFormacion } = await import("@/lib/ia.server");
-
-      const resultado = await armarConDT(dossier, jugadores_ids, nivelPorJugador, pedirFormacion);
-      if (!resultado.ok) return conAlgoritmo(resultado.motivo);
-
-      const { blanco, negro } = aAsignaciones(resultado.formacion, nombrePorId);
-      return { blanco, negro, niveles, explicacion: resultado.formacion.explicacion,
-               armado_por: "ia" as const };
-    } catch (e: any) {
-      console.error("[armador-ia] falló, se arma con el algoritmo:", e?.message);
-      return conAlgoritmo(e?.message ?? "Error llamando a la IA");
-    }
+    const { data } = await supabaseAdmin
+      .from("armados_dt")
+      .select("id, estado, jugadores_ids, resultado, error")
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    return data ?? null;
   });
 
 // === Armar equipos MANUAL: admin elige quién va a blanco y a negro ===

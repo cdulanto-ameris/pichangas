@@ -7,6 +7,11 @@
   command = "npm run build"
   publish = "dist"
 
+[functions]
+  # Nuestras propias functions (la background del armador con IA). Convive con
+  # las `functions-internal` que genera Nitro: son directorios distintos.
+  directory = "netlify/functions"
+
 [build.environment]
   # Vite 7 requiere Node >= 20.19 o >= 22.12
   NODE_VERSION = "22"

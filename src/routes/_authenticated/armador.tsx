@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useServerFn } from "@tanstack/react-start";
 import { HudHeader } from "@/components/HudHeader";
-import { sugerirEquipos, sugerirEquiposIA, crearPartido, armarManual } from "@/lib/partidos.functions";
+import { sugerirEquipos, pedirArmadoDT, getArmadoDT, crearPartido, armarManual } from "@/lib/partidos.functions";
 import { agregarParche } from "@/lib/admin.functions";
 import { SECTORES, type Sector } from "@/lib/sectores";
 import { ordenLineas, columnaVisual, sectorLinea, sectorColumna, nombreFormacion, type Mitad } from "@/lib/formacion";
@@ -38,7 +38,8 @@ function Armador() {
   const [negro, setNegro] = useState<Asig[]>([]);
   const [loading, setLoading] = useState(false);
   const sugerir = useServerFn(sugerirEquipos);
-  const sugerirIA = useServerFn(sugerirEquiposIA);
+  const pedirArmado = useServerFn(pedirArmadoDT);
+  const leerArmado = useServerFn(getArmadoDT);
   const [pensando, setPensando] = useState(false);
   const [explicacion, setExplicacion] = useState<string | null>(null);
   const [avisoFallback, setAvisoFallback] = useState<string | null>(null);
@@ -168,34 +169,91 @@ function Armador() {
     finally { setLoading(false); }
   }
 
-  async function doSugerirIA() {
+  type ResultadoDT = {
+    blanco: Asig[]; negro: Asig[]; explicacion: string | null;
+    armado_por: "ia" | "algoritmo"; motivo_fallback?: string;
+  };
+
+  function aplicarArmado(r: ResultadoDT) {
+    setBlanco(r.blanco); setNegro(r.negro);
+    setExplicacion(r.explicacion);
+    setArmadoPor(r.armado_por);
+    // Que el fallback sea visible es el punto: si el DT no armó, hay que poder
+    // saberlo sin mirar los logs.
+    setAvisoFallback(r.armado_por === "algoritmo" ? (r.motivo_fallback ?? "No se pudo usar la IA") : null);
+  }
+
+  // Al entrar, re-engancha con el armado que haya quedado: si sigue en proceso
+  // vuelve a esperarlo, si terminó lo carga. Es lo que hace que cerrar la
+  // pestaña no pierda un armado que ya se pagó.
+  useEffect(() => {
+    if (!isAdmin) return;
+    let vivo = true;
+    (async () => {
+      try {
+        const a = await leerArmado();
+        if (!vivo || !a) return;
+        if (a.estado === "en_proceso") setPensando(true);
+        else if (a.estado === "listo" && a.resultado) aplicarArmado(a.resultado as unknown as ResultadoDT);
+      } catch { /* si no se puede leer, la pantalla arranca vacía y no pasa nada */ }
+    })();
+    return () => { vivo = false; };
+  }, [isAdmin]);
+
+  // El trabajo corre en una background function, así que la pantalla pregunta
+  // en vez de esperar una respuesta. Se rinde a los 15 minutos, que es el techo
+  // de esa función: más allá de eso ya no va a llegar nada.
+  useEffect(() => {
+    if (!pensando) return;
+    let vivo = true;
+    const limite = Date.now() + 15 * 60 * 1000;
+    const id = setInterval(async () => {
+      try {
+        const a = await leerArmado();
+        if (!vivo) return;
+        if (a?.estado === "listo" && a.resultado) {
+          aplicarArmado(a.resultado as unknown as ResultadoDT);
+          setPensando(false);
+        } else if (a?.estado === "error") {
+          setAvisoFallback(a.error ?? "El DT falló y no dejó equipos");
+          setPensando(false);
+        } else if (Date.now() > limite) {
+          setAvisoFallback("El DT no respondió a tiempo");
+          setPensando(false);
+        }
+      } catch { /* un tropiezo de red no cancela la espera */ }
+    }, 3000);
+    return () => { vivo = false; clearInterval(id); };
+  }, [pensando]);
+
+  async function doSugerirIA(forzar = false) {
     if (seleccion.size !== 16) { alert("El DT necesita los 16 convocados"); return; }
     setPensando(true);
-    limpiarArmadoIA();
     try {
-      const r = await sugerirIA({ data: { jugadores_ids: [...seleccion] } });
-      setBlanco(r.blanco); setNegro(r.negro);
-      setExplicacion(r.explicacion);
-      setArmadoPor(r.armado_por);
-      // Que el fallback sea visible es el punto: si el DT no armó, hay que
-      // poder saberlo sin mirar los logs.
-      if (r.armado_por === "algoritmo") {
-        setAvisoFallback(r.motivo_fallback ?? "No se pudo usar la IA");
+      const r = await pedirArmado({ data: { jugadores_ids: [...seleccion], forzar } });
+
+      if (r.decision === "esperar") {
+        // Hay uno en vuelo: quedamos esperando ese en vez de pagar otro.
+        alert("Armado en proceso, espera a que termine.");
+        return;
       }
+
+      if (r.decision === "confirmar") {
+        setPensando(false);
+        const sigue = confirm(
+          "Ya hay equipos para este partido. ¿Quieres generar nuevos? Esto consume créditos.",
+        );
+        if (sigue) await doSugerirIA(true);
+        return;
+      }
+
+      // Arrancó: la explicación anterior ya no describe nada, y de acá en
+      // adelante se encarga la consulta periódica.
+      limpiarArmadoIA();
     } catch (e: any) {
-      // El fallback del servidor vive dentro de la misma invocación, así que un
-      // timeout de la plataforma se lo lleva puesto. Este segundo intento desde
-      // el cliente es lo que sostiene la promesa de no quedarse sin equipos.
-      try {
-        const r = await sugerir({ data: { jugadores_ids: [...seleccion] } });
-        setBlanco(r.blanco); setNegro(r.negro);
-        setArmadoPor("algoritmo");
-        setAvisoFallback(`El DT no alcanzó a responder (${e?.message ?? "error"}), se armó con el algoritmo`);
-      } catch {
-        alert(e?.message ?? "No se pudo armar");
-      }
+      setPensando(false);
+      alert(e?.message ?? "No se pudo pedir el armado");
     }
-    finally { setPensando(false); }
   }
 
 
@@ -339,7 +397,7 @@ function Armador() {
                 className="w-full mt-4 py-2.5 rounded bg-primary text-primary-foreground font-bold uppercase tracking-wider glow-primary disabled:opacity-40">
                 ⚡ Sugerir equipos ({seleccion.size})
               </button>
-              <button onClick={doSugerirIA} disabled={pensando || loading || seleccion.size !== 16}
+              <button onClick={() => doSugerirIA()} disabled={pensando || loading || seleccion.size !== 16}
                 className="w-full mt-2 py-2.5 rounded bg-accent text-accent-foreground font-bold uppercase tracking-wider glow-accent disabled:opacity-40">
                 {pensando ? "🧠 El DT está pensando…" : `🧠 Armar con el DT (${seleccion.size}/16)`}
               </button>

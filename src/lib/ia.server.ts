@@ -51,6 +51,10 @@ export async function pedirFormacion(
     model: MODELO_DT,
     max_tokens: MAX_TOKENS,
     system: SYSTEM_DT,
+    // Explícito aunque sea el default de Sonnet 5: el thinking es lo que hace
+    // que el armado tenga criterio y no sea un reparto al azar. Que nadie lo
+    // apague por error creyendo que solo ahorra.
+    thinking: { type: "adaptive" },
     output_config: { effort: ESFUERZO, format: zodOutputFormat(FormacionIASchema) },
     messages: [{ role: "user", content: turnoDelUsuario(dossier, correccion) }],
   });

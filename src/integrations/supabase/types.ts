@@ -14,6 +14,42 @@ export type Database = {
   }
   public: {
     Tables: {
+      armados_dt: {
+        Row: {
+          created_at: string
+          creado_por: string | null
+          error: string | null
+          estado: string
+          id: string
+          intentos: number
+          jugadores_ids: string[]
+          resultado: Json | null
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          creado_por?: string | null
+          error?: string | null
+          estado?: string
+          id?: string
+          intentos?: number
+          jugadores_ids: string[]
+          resultado?: Json | null
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          creado_por?: string | null
+          error?: string | null
+          estado?: string
+          id?: string
+          intentos?: number
+          jugadores_ids?: string[]
+          resultado?: Json | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
       calificaciones: {
         Row: {
           calificado_id: string
