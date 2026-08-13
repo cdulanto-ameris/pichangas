@@ -119,7 +119,7 @@ describe("nombreFormacion", () => {
     ))).toBe("3-3-2");
   });
 
-  it("nombra el 3-2-3 ofensivo, con el central de atrás vacío", () => {
+  it("nombra el 2-3-3 ofensivo, con el central de atrás vacío", () => {
     expect(nombreFormacion(en(
       "DEF_IZQ", "DEF_DER",
       "MED_IZQ", "MED_CEN", "MED_DER",

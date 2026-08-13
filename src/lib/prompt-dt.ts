@@ -24,7 +24,7 @@ campo en una grilla 3x3 relativa a su propio arco:
 
 Son 9 casillas y 8 jugadores: en cada equipo queda una vacía, y cuál queda vacía
 es decisión tuya. Sin DEL_CEN sale un 3-3-2, el armado habitual del grupo; sin
-DEF_CEN sale un 3-2-3 más ofensivo. Cada casilla la ocupa exactamente un jugador.
+DEF_CEN sale un 2-3-3 más ofensivo. Cada casilla la ocupa exactamente un jugador.
 
 ## Cómo leer los datos
 - \`nota_temporada.promedio\`: el consenso del grupo. Cada uno califica al resto
