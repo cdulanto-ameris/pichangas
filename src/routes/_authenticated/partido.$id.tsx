@@ -17,7 +17,7 @@ const STAT_MAX = 20;
 type Partido = {
   id: string; estado: string; ganador: string | null;
   goles_blanco_total: number; goles_negro_total: number;
-  equipo_blanco: any[]; equipo_negro: any[];
+  equipo_blanco: any[]; equipo_negro: any[]; explicacion_dt: string | null;
 };
 type Stat = { jugador_id: string; equipo: string; goles: number; asistencias: number; declarado: boolean; pagado?: boolean; posicion?: Sector | null };
 
@@ -204,6 +204,17 @@ function PartidoPage() {
             </div>
           )}
         </div>
+
+        {partido.explicacion_dt && (
+          <div className="hud-panel overflow-hidden">
+            <div className="hud-header-bar px-4 py-2">
+              <span className="hud-tab-title text-sm">🧠 EL DT</span>
+            </div>
+            <p className="px-4 py-3 text-sm leading-relaxed whitespace-pre-line">
+              {partido.explicacion_dt}
+            </p>
+          </div>
+        )}
 
         <div className="grid md:grid-cols-2 gap-4">
           <EquipoCard titulo="EQUIPO BLANCO" players={partido.equipo_blanco} stats={stats.filter(s=>s.equipo==="blanco")} profiles={profiles} color="white" partidoId={id} showRatings={partido.estado === "cerrado"} />
