@@ -3,10 +3,10 @@ import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useServerFn } from "@tanstack/react-start";
 import { HudHeader } from "@/components/HudHeader";
-import { sugerirEquipos, crearPartido, armarManual } from "@/lib/partidos.functions";
+import { sugerirEquipos, sugerirEquiposIA, crearPartido, armarManual } from "@/lib/partidos.functions";
 import { agregarParche } from "@/lib/admin.functions";
 import { SECTORES, type Sector } from "@/lib/sectores";
-import { ordenLineas, columnaVisual, sectorLinea, sectorColumna, type Mitad } from "@/lib/formacion";
+import { ordenLineas, columnaVisual, sectorLinea, sectorColumna, nombreFormacion, type Mitad } from "@/lib/formacion";
 import { normalizarNombre, coincideBusqueda } from "@/lib/parches";
 import { getSeasonRatings } from "@/lib/ratings.functions";
 import { RatingBadge } from "@/components/RatingBadge";
@@ -38,6 +38,10 @@ function Armador() {
   const [negro, setNegro] = useState<Asig[]>([]);
   const [loading, setLoading] = useState(false);
   const sugerir = useServerFn(sugerirEquipos);
+  const sugerirIA = useServerFn(sugerirEquiposIA);
+  const [pensando, setPensando] = useState(false);
+  const [explicacion, setExplicacion] = useState<string | null>(null);
+  const [avisoFallback, setAvisoFallback] = useState<string | null>(null);
   const manual = useServerFn(armarManual);
   const crear = useServerFn(crearPartido);
   const addParche = useServerFn(agregarParche);
@@ -116,7 +120,6 @@ function Armador() {
   const blancoIds = Object.entries(lado).filter(([,v])=>v==="B").map(([k])=>k);
   const negroIds = Object.entries(lado).filter(([,v])=>v==="N").map(([k])=>k);
 
-  const jugadoresReales = todos.filter(p => !p.es_parche);
   const parches = todos.filter(p => p.es_parche);
 
   // Combobox de parches: coincidencias con lo escrito y si el nombre exacto ya existe.
@@ -148,11 +151,31 @@ function Armador() {
   async function doSugerir() {
     if (seleccion.size < 2 || seleccion.size > 16) { alert("Selecciona entre 2 y 16 jugadores"); return; }
     setLoading(true);
+    setExplicacion(null);
+    setAvisoFallback(null);
     try {
       const r = await sugerir({ data: { jugadores_ids: [...seleccion] } });
       setBlanco(r.blanco); setNegro(r.negro);
     } catch (e: any) { alert(e.message); }
     finally { setLoading(false); }
+  }
+
+  async function doSugerirIA() {
+    if (seleccion.size !== 16) { alert("El DT necesita los 16 convocados"); return; }
+    setPensando(true);
+    setExplicacion(null);
+    setAvisoFallback(null);
+    try {
+      const r = await sugerirIA({ data: { jugadores_ids: [...seleccion] } });
+      setBlanco(r.blanco); setNegro(r.negro);
+      setExplicacion(r.explicacion);
+      // Que el fallback sea visible es el punto: si el DT no armó, hay que
+      // poder saberlo sin mirar los logs.
+      if (r.armado_por === "algoritmo") {
+        setAvisoFallback(r.motivo_fallback ?? "No se pudo usar la IA");
+      }
+    } catch (e: any) { alert(e.message); }
+    finally { setPensando(false); }
   }
 
 
@@ -173,7 +196,12 @@ function Armador() {
     if (!blanco.length || !negro.length) return;
     setLoading(true);
     try {
-      const r = await crear({ data: { equipo_blanco: blanco, equipo_negro: negro } });
+      const r = await crear({ data: {
+        equipo_blanco: blanco,
+        equipo_negro: negro,
+        explicacion_dt: explicacion,
+        armado_por: explicacion ? "ia" : "algoritmo",
+      } });
       navigate({ to: "/partido/$id", params: { id: r.partido_id } });
     } catch (e: any) { alert(e.message); }
     finally { setLoading(false); }
@@ -275,19 +303,24 @@ function Armador() {
           {modo === "auto" ? (
             <>
               <h2 className="font-bold text-lg mb-1 text-primary">Convocados ({seleccion.size}/16)</h2>
-              <p className="text-[11px] text-muted-foreground mb-3">Solo jugadores. Los parches se asignan abajo después de sugerir.</p>
+              <p className="text-[11px] text-muted-foreground mb-3">Elige los 16 que juegan. El DT ubica también a los parches.</p>
               <div className="space-y-1 max-h-[420px] overflow-y-auto">
-                {jugadoresReales.map(p => (
+                {todos.map(p => (
                   <label key={p.id} className={`flex items-center gap-2 px-2 py-1.5 rounded cursor-pointer ${seleccion.has(p.id) ? "bg-primary/20" : "hover:bg-secondary/50"}`}>
                     <input type="checkbox" checked={seleccion.has(p.id)} onChange={()=>toggle(p.id)} />
                     <span className="font-semibold">{p.sobrenombre}</span>
+                    {p.es_parche && <span className="text-[10px] uppercase text-accent">parche</span>}
                   </label>
                 ))}
-                {jugadoresReales.length === 0 && <p className="text-xs italic text-muted-foreground">No hay jugadores registrados.</p>}
+                {todos.length === 0 && <p className="text-xs italic text-muted-foreground">No hay jugadores registrados.</p>}
               </div>
               <button onClick={doSugerir} disabled={loading || seleccion.size < 2 || seleccion.size > 16}
                 className="w-full mt-4 py-2.5 rounded bg-primary text-primary-foreground font-bold uppercase tracking-wider glow-primary disabled:opacity-40">
                 ⚡ Sugerir equipos ({seleccion.size})
+              </button>
+              <button onClick={doSugerirIA} disabled={pensando || loading || seleccion.size !== 16}
+                className="w-full mt-2 py-2.5 rounded bg-accent text-accent-foreground font-bold uppercase tracking-wider glow-accent disabled:opacity-40">
+                {pensando ? "🧠 El DT está pensando…" : `🧠 Armar con el DT (${seleccion.size}/16)`}
               </button>
 
               {isAdmin && blanco.length > 0 && (blanco.length < 8 || negro.length < 8) && (
@@ -362,12 +395,25 @@ function Armador() {
           <div className="hud-header-bar px-4 py-2 flex items-center justify-between">
             <span className="hud-tab-title text-sm">FORMACIÓN</span>
             <span className="text-[10px] uppercase tracking-[0.25em] text-foreground/70">
-              {blanco.length === 8 && negro.length === 8 ? "3-3-2 / 3-3-2" : "Esperando equipos…"}
+              {nombreFormacion(blanco) && nombreFormacion(negro)
+                ? `${nombreFormacion(blanco)} / ${nombreFormacion(negro)}`
+                : "Esperando equipos…"}
             </span>
           </div>
           <div className="p-3 space-y-2">
             {(blanco.length > 0 || negro.length > 0) && (
               <BalanceEquipos blanco={blanco} negro={negro} notaDe={notaDe} />
+            )}
+            {avisoFallback && (
+              <div className="rounded border border-destructive/50 bg-destructive/10 px-3 py-2 text-[11px] text-foreground/80">
+                <span className="font-bold uppercase tracking-wider">Armado sin IA</span> · {avisoFallback}
+              </div>
+            )}
+            {explicacion && (
+              <div className="rounded border border-accent/40 bg-accent/5 px-3 py-2">
+                <div className="text-[10px] uppercase tracking-wider text-accent font-bold mb-1">🧠 El DT</div>
+                <p className="text-sm leading-relaxed whitespace-pre-line">{explicacion}</p>
+              </div>
             )}
             <Cancha blanco={blanco} negro={negro} notaDe={notaDe} />
           </div>
