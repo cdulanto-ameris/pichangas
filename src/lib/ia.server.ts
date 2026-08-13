@@ -8,11 +8,18 @@ import { SYSTEM_DT } from "./prompt-dt";
 import { FormacionIASchema, type FormacionIA } from "./formacion-ia";
 import type { DossierPartido } from "./dossier";
 
-export const MODELO_DT = "claude-opus-5";
+export const MODELO_DT = "claude-sonnet-5";
 
-// En Opus 5 el thinking está activo por defecto y cuenta contra este tope.
-// Bajarlo trunca la respuesta a mitad de camino.
+// El thinking está activo por defecto y se cobra como salida, así que cuenta
+// contra este tope. Es un techo, no una reserva: dejarlo holgado no cuesta nada
+// y evita que un armado se trunque a mitad del JSON.
 const MAX_TOKENS = 16000;
+
+// El armado es una tarea acotada, no un problema abierto: con `low` el modelo
+// piensa lo justo. Es la palanca principal de gasto y de latencia — el thinking
+// se cobra a precio de salida, y acá corremos dentro de una Netlify Function,
+// que corta a los 26 segundos.
+const ESFUERZO = "low" as const;
 
 export type Correccion = { intento: FormacionIA; problema: string };
 
@@ -44,7 +51,7 @@ export async function pedirFormacion(
     model: MODELO_DT,
     max_tokens: MAX_TOKENS,
     system: SYSTEM_DT,
-    output_config: { format: zodOutputFormat(FormacionIASchema) },
+    output_config: { effort: ESFUERZO, format: zodOutputFormat(FormacionIASchema) },
     messages: [{ role: "user", content: turnoDelUsuario(dossier, correccion) }],
   });
 
