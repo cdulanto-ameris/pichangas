@@ -69,14 +69,28 @@ export const sugerirEquiposIA = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d) => sugerirIAInput.parse(d))
   .handler(async ({ data, context }) => {
-    const { supabase } = context;
+    const { supabase, userId } = context;
     const { jugadores_ids } = data;
+
+    // Cada armado con el DT gasta hasta dos llamadas a Opus 5 con el dossier
+    // completo: es plata que no se recupera, así que no lo abrimos a cualquiera.
+    const { data: esAdmin } = await supabase.rpc("has_role", { _user_id: userId, _role: "admin" });
+    if (!esAdmin) throw new Error("Solo admins pueden armar con el DT");
 
     const { data: perfiles } = await supabase
       .from("profiles")
       .select("id, sobrenombre, es_parche, nota_manual, sector_1, sector_2, sector_3")
       .in("id", jugadores_ids);
     if (!perfiles?.length) throw new Error("No se pudieron cargar los perfiles");
+
+    // Con menos perfiles que convocados el armado no puede cerrar 8+8: mejor
+    // fallar acá que gastar dos llamadas al modelo para terminar con equipos
+    // disparejos que igual va a rechazar `crearPartido`.
+    if (perfiles.length !== jugadores_ids.length) {
+      throw new Error(
+        `Se pidieron ${jugadores_ids.length} jugadores y solo se pudieron cargar ${perfiles.length}`,
+      );
+    }
 
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
 
@@ -123,15 +137,15 @@ export const sugerirEquiposIA = createServerFn({ method: "POST" })
 
     if (!iaDisponible()) return conAlgoritmo("No hay API key configurada");
 
-    const dossier = construirDossier({
-      perfiles,
-      partidos: partidosConResultado,
-      stats: (stats ?? []) as any,
-      calificaciones: calificaciones ?? [],
-      hoy: new Date(),
-    });
-
     try {
+      const dossier = construirDossier({
+        perfiles,
+        partidos: partidosConResultado,
+        stats: (stats ?? []) as any,
+        calificaciones: calificaciones ?? [],
+        hoy: new Date(),
+      });
+
       const { pedirFormacion } = await import("@/lib/ia.server");
 
       let intento = await pedirFormacion(dossier);
