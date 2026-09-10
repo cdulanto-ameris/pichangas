@@ -192,6 +192,10 @@
     box-shadow: 0 2px 4px oklch(0 0 0 / 60%);
     text-transform: uppercase;
     white-space: nowrap;
+    /* Un sobrenombre largo se recorta en su celda en vez de invadir la de al lado. */
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
   .scoreboard {
     background: linear-gradient(180deg, #0c1530 0%, #1b2a55 50%, #08102b 100%);

@@ -1,5 +1,5 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useServerFn } from "@tanstack/react-start";
 import { HudHeader } from "@/components/HudHeader";
@@ -52,6 +52,33 @@ function Armador() {
   const [comboAbierto, setComboAbierto] = useState(false);
   const [notas, setNotas] = useState<Record<string, { avg: number; n: number }>>({});
   const fetchSeason = useServerFn(getSeasonRatings);
+  const [copiado, setCopiado] = useState(false);
+  const copiadoTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // El "Copiado" se apaga solo; si te vas de la pantalla antes, el timer no queda vivo.
+  useEffect(() => () => { if (copiadoTimer.current) clearTimeout(copiadoTimer.current); }, []);
+
+  async function copiarExplicacion() {
+    if (!explicacion) return;
+    try {
+      await navigator.clipboard.writeText(explicacion);
+    } catch {
+      // Sin portapapeles (contexto no seguro o permiso denegado): a la antigua.
+      const ta = document.createElement("textarea");
+      ta.value = explicacion;
+      ta.setAttribute("readonly", "");
+      ta.style.position = "fixed";
+      ta.style.opacity = "0";
+      document.body.appendChild(ta);
+      ta.select();
+      const ok = document.execCommand("copy");
+      document.body.removeChild(ta);
+      if (!ok) { alert("No se pudo copiar. Selecciona el texto a mano."); return; }
+    }
+    setCopiado(true);
+    if (copiadoTimer.current) clearTimeout(copiadoTimer.current);
+    copiadoTimer.current = setTimeout(() => setCopiado(false), 2000);
+  }
 
   async function cargarJugadores() {
     const { data } = await supabase.from("profiles").select("id, sobrenombre, es_parche, nota_manual").order("sobrenombre");
@@ -490,11 +517,22 @@ function Armador() {
             )}
             {explicacion && (
               <div className="rounded border border-accent/40 bg-accent/5 px-3 py-2">
-                <div className="text-[10px] uppercase tracking-wider text-accent font-bold mb-1">🧠 El DT</div>
+                <div className="flex items-center justify-between gap-2 mb-1">
+                  <span className="text-[10px] uppercase tracking-wider text-accent font-bold">🧠 El DT</span>
+                  <button
+                    type="button"
+                    onClick={copiarExplicacion}
+                    aria-label="Copiar el texto del DT"
+                    className="shrink-0 px-2 py-0.5 rounded text-[10px] uppercase tracking-wider font-bold border border-accent/50 text-accent hover:bg-accent/10">
+                    {copiado ? "✓ Copiado" : "📋 Copiar"}
+                  </button>
+                </div>
                 <p className="text-sm leading-relaxed whitespace-pre-line">{explicacion}</p>
               </div>
             )}
-            <Cancha blanco={blanco} negro={negro} notaDe={notaDe} />
+            <div className="-mx-3 px-3 overflow-x-auto">
+              <Cancha blanco={blanco} negro={negro} notaDe={notaDe} />
+            </div>
           </div>
         </section>
       </main>
@@ -536,7 +574,7 @@ function BalanceEquipos({ blanco, negro, notaDe }: { blanco: Asig[]; negro: Asig
 
 function Cancha({ blanco, negro, notaDe }: { blanco: Asig[]; negro: Asig[]; notaDe: NotaDe }) {
   return (
-    <div className="pitch-bg rounded-md p-4 relative aspect-[3/4] min-h-[600px] overflow-hidden">
+    <div className="pitch-bg rounded-md p-4 relative aspect-[3/4] min-h-[600px] min-w-[380px] overflow-hidden">
       <div className="pitch-line absolute top-1/2 left-0 right-0 h-px" />
       <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-24 h-24 rounded-full border-2 border-white/85" />
       <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-1.5 h-1.5 rounded-full bg-white/90" />
@@ -576,9 +614,9 @@ function GridEquipo({ asignaciones, color, mitad, notaDe }: { asignaciones: Asig
           x => sectorLinea(x.sector) === lineas[row] && columnaVisual(mitad, sectorColumna(x.sector)) === col,
         );
         return (
-          <div key={`${row}-${col}`} className="flex items-center justify-center">
+          <div key={`${row}-${col}`} className="flex min-w-0 items-center justify-center">
             {a && (
-              <div className="flex flex-col items-center gap-1">
+              <div className="flex min-w-0 max-w-full flex-col items-center gap-1">
                 <div className="relative">
                   <div className={`we-jersey ${color === "white" ? "we-jersey-white" : "we-jersey-black"} text-[11px]`}>
                     {a.sobrenombre.slice(0,2).toUpperCase()}
