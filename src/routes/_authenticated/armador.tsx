@@ -574,7 +574,7 @@ function BalanceEquipos({ blanco, negro, notaDe }: { blanco: Asig[]; negro: Asig
 
 function Cancha({ blanco, negro, notaDe }: { blanco: Asig[]; negro: Asig[]; notaDe: NotaDe }) {
   return (
-    <div className="pitch-bg rounded-md p-4 relative aspect-[3/4] min-h-[600px] min-w-[380px] overflow-hidden">
+    <div className="pitch-bg rounded-md p-4 relative aspect-[3/4] min-h-[720px] min-w-[380px] overflow-hidden">
       <div className="pitch-line absolute top-1/2 left-0 right-0 h-px" />
       <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-24 h-24 rounded-full border-2 border-white/85" />
       <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-1.5 h-1.5 rounded-full bg-white/90" />
@@ -583,12 +583,12 @@ function Cancha({ blanco, negro, notaDe }: { blanco: Asig[]; negro: Asig[]; nota
       <div className="absolute bottom-0 left-1/2 -translate-x-1/2 w-[55%] h-[14%] border-2 border-b-0 border-white/85" />
       <div className="absolute bottom-0 left-1/2 -translate-x-1/2 w-[28%] h-[6%] border-2 border-b-0 border-white/85" />
 
-      <div className="absolute top-[6%] left-2 right-2 h-[40%]">
+      <div className="absolute top-[84px] bottom-[52%] left-2 right-2">
         <GridEquipo asignaciones={blanco} color="white" mitad="arriba" notaDe={notaDe} />
       </div>
       <Arquero color="white" pos="top" />
 
-      <div className="absolute bottom-[6%] left-2 right-2 h-[40%]">
+      <div className="absolute bottom-[78px] top-[52%] left-2 right-2">
         <GridEquipo asignaciones={negro} color="black" mitad="abajo" notaDe={notaDe} />
       </div>
       <Arquero color="black" pos="bottom" />
