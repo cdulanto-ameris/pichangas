@@ -1,12 +1,19 @@
 import { describe, it, expect } from "vitest";
 import { SYSTEM_DT } from "./prompt-dt";
 import { SECTORES } from "./sectores";
+import { DELTA_MAXIMO } from "./formacion-ia";
 
 describe("SYSTEM_DT", () => {
   it("nombra los 9 sectores, para que el modelo no invente casillas", () => {
     // Guarda contra el drift: si mañana se agrega un sector y el prompt no se
     // actualiza, el modelo nunca lo va a usar y nadie se va a dar cuenta.
     for (const s of SECTORES) expect(SYSTEM_DT).toContain(s);
+  });
+
+  it("le avisa al modelo el delta máximo que exige el validador", () => {
+    // Si no lo sabe de antemano, lo descubre recién en el reintento, que con
+    // el corte de 26 segundos de Netlify es caro.
+    expect(SYSTEM_DT).toContain(String(DELTA_MAXIMO));
   });
 
   it("le dice al modelo que un cero en goles es un cero real", () => {
