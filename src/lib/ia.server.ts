@@ -47,11 +47,13 @@ export async function pedirFormacion(
   // de armado y multiplique la latencia total.
   const client = new Anthropic({ maxRetries: 1 }); // lee ANTHROPIC_API_KEY del entorno
 
-  // `create` en vez de `parse`: `parse` intenta leer el JSON antes de que uno
-  // alcance a mirar el stop_reason, y si la respuesta se cortó el error sale
-  // como "Unterminated string in JSON", que no dice qué pasó.
+  // Streaming obligado: con un max_tokens así de alto el SDK se niega a hacer
+  // la llamada sin stream ("may take longer than 10 minutes").
+  // Al stream se le pasa solo el schema, sin `parse`: si lo trae, el SDK lee el
+  // JSON antes de que uno alcance a mirar el stop_reason, y un corte sale como
+  // "Unterminated string in JSON", que no dice qué pasó.
   const formato = zodOutputFormat(FormacionIASchema);
-  const respuesta = await client.messages.create({
+  const respuesta = await client.messages.stream({
     model: MODELO_DT,
     max_tokens: MAX_TOKENS,
     system: SYSTEM_DT,
@@ -59,9 +61,9 @@ export async function pedirFormacion(
     // que el armado tenga criterio y no sea un reparto al azar. Que nadie lo
     // apague por error creyendo que solo ahorra.
     thinking: { type: "adaptive" },
-    output_config: { effort: ESFUERZO, format: formato },
+    output_config: { effort: ESFUERZO, format: { type: formato.type, schema: formato.schema } },
     messages: [{ role: "user", content: turnoDelUsuario(dossier, correccion) }],
-  });
+  }).finalMessage();
 
   if (respuesta.stop_reason === "refusal") {
     throw new Error("El modelo declinó responder");
